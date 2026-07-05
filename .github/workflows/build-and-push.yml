@@ -1,6 +1,5 @@
-# Build and push: develop → tag :dev (staging), main → version + digest (prod)
-# ArgoCD: App Dev = branche develop + namespace zenix-app-dev
-#         App Prod = branche main + namespace zenix-app
+# Build and push: main → version + digest (prod)
+# ArgoCD: App = branche main + namespace zenix-app
 
 name: Build and push to GHCR
 
@@ -8,21 +7,10 @@ on:
   push:
     branches:
       - main
-      - develop
   pull_request:
     branches:
       - main
-      - develop
   workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to build (dev or prod tag)'
-        required: true
-        default: 'main'
-        type: choice
-        options:
-          - main
-          - develop
 
 env:
   REGISTRY: ghcr.io
@@ -81,7 +69,7 @@ jobs:
   build-and-push:
     name: Build and push
     needs: test
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -94,36 +82,28 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set image tag (dev vs prod)
+      - name: Set image tag (version bump)
         id: tag
         run: |
-          BRANCH="${{ github.event_name == 'workflow_dispatch' && github.event.inputs.branch || github.ref_name }}"
-          if [ "$BRANCH" = "develop" ]; then
-            TAG="dev"
-            IS_DEV="true"
-          else
-            CONTENT=$(cat version.txt | tr -d '\r\n ')
-            MAJOR=$(echo "$CONTENT" | cut -d. -f1)
-            MINOR=$(echo "$CONTENT" | cut -d. -f2)
-            PATCH=$(echo "$CONTENT" | cut -d. -f3)
-            if ! [[ "$MAJOR" =~ ^[0-9]+$ ]] || ! [[ "$MINOR" =~ ^[0-9]+$ ]] || ! [[ "$PATCH" =~ ^[0-9]+$ ]]; then
-              echo "version.txt invalide: $CONTENT (attendu X.Y.Z)"
-              exit 1
-            fi
-            if [ "$PATCH" -lt 9 ]; then
-              PATCH=$((PATCH + 1))
-            else
-              PATCH=0
-              MINOR=$((MINOR + 1))
-            fi
-            NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-            echo "$NEW_VERSION" > version.txt
-            TAG="v${NEW_VERSION}"
-            IS_DEV="false"
+          CONTENT=$(cat version.txt | tr -d '\r\n ')
+          MAJOR=$(echo "$CONTENT" | cut -d. -f1)
+          MINOR=$(echo "$CONTENT" | cut -d. -f2)
+          PATCH=$(echo "$CONTENT" | cut -d. -f3)
+          if ! [[ "$MAJOR" =~ ^[0-9]+$ ]] || ! [[ "$MINOR" =~ ^[0-9]+$ ]] || ! [[ "$PATCH" =~ ^[0-9]+$ ]]; then
+            echo "version.txt invalide: $CONTENT (attendu X.Y.Z)"
+            exit 1
           fi
+          if [ "$PATCH" -lt 9 ]; then
+            PATCH=$((PATCH + 1))
+          else
+            PATCH=0
+            MINOR=$((MINOR + 1))
+          fi
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "$NEW_VERSION" > version.txt
+          TAG="v${NEW_VERSION}"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "is_dev=$IS_DEV" >> $GITHUB_OUTPUT
-          echo "Branch: $BRANCH -> tag: $TAG (is_dev=$IS_DEV)"
+          echo "Tag: $TAG"
 
       - name: Log in to GHCR
         uses: docker/login-action@v4
@@ -195,7 +175,6 @@ jobs:
       - name: Pin Helm values to image digest
         run: |
           TAG="${{ steps.tag.outputs.tag }}"
-          IS_DEV="${{ steps.tag.outputs.is_dev }}"
           DIGEST_BACKEND="${{ steps.build-backend.outputs.digest }}"
           DIGEST_FRONTEND="${{ steps.build-frontend.outputs.digest }}"
           OWNER="${{ github.repository_owner }}"
@@ -212,23 +191,13 @@ jobs:
             FRONTEND_IMAGE="${REG}/${OWNER}/zenix-app-front:${TAG}"
           fi
 
-          if [ "$IS_DEV" = "true" ]; then
-            VALUES_PATH="charts/zenix-app/values-dev.yaml"
-          else
-            VALUES_PATH="charts/zenix-app/values.yaml"
-          fi
-
+          VALUES_PATH="charts/zenix-app/values.yaml"
           sed -i "s|  image: ghcr.io/.*zenix-app-back.*|  image: ${BACKEND_IMAGE}|" "$VALUES_PATH"
           sed -i "s|  image: ghcr.io/.*zenix-app-front.*|  image: ${FRONTEND_IMAGE}|" "$VALUES_PATH"
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          if [ "$IS_DEV" = "true" ]; then
-            git add "$VALUES_PATH"
-          else
-            git add version.txt "$VALUES_PATH"
-          fi
+          git add version.txt "$VALUES_PATH"
 
           if git diff --staged --quiet; then
             echo "Helm values already up to date, skip commit"
