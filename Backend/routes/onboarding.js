@@ -56,10 +56,19 @@ const profileSchema = z.object({
   siret:      z.string().trim().regex(/^\d{14}$/).optional().or(z.literal('')),
 });
 
+const FIELD_LABELS = {
+  first_name: 'le prénom', last_name: 'le nom', phone: 'le téléphone (6 chiffres min.)',
+  address: "l'adresse complète", siret: 'le SIRET (14 chiffres, sans espaces)',
+};
+
 /* ── POST /api/onboarding/profile ──────────────────────────────────────── */
 router.post('/profile', async (req, res) => {
   const parsed = profileSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Vérifiez vos informations (SIRET = 14 chiffres, sans espaces)' });
+  if (!parsed.success) {
+    const fields = Object.keys(parsed.error.flatten().fieldErrors)
+      .map((f) => FIELD_LABELS[f] ?? f);
+    return res.status(400).json({ error: `Vérifiez ${fields.join(', ')}` });
+  }
   const d = parsed.data;
   const pool = getPool();
 

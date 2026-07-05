@@ -95,12 +95,13 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
           <input className={inputCls} placeholder="Nom" required value={f.last_name}
             onChange={(e) => setF({ ...f, last_name: e.target.value })} />
         </div>
-        <input className={inputCls} placeholder="Téléphone" type="tel" required value={f.phone}
+        <input className={inputCls} placeholder="Téléphone" type="tel" required minLength={6} maxLength={30} value={f.phone}
           onChange={(e) => setF({ ...f, phone: e.target.value })} />
-        <input className={inputCls} placeholder="Adresse complète (rue, code postal, ville)" required value={f.address}
+        <input className={inputCls} placeholder="Adresse complète (rue, code postal, ville)" required minLength={5} value={f.address}
           onChange={(e) => setF({ ...f, address: e.target.value })} />
-        <input className={inputCls} placeholder="SIRET (14 chiffres — laissez vide si particulier)" value={f.siret}
-          onChange={(e) => setF({ ...f, siret: e.target.value })} />
+        <input className={inputCls} placeholder="SIRET (14 chiffres — laissez vide si particulier)"
+          pattern="\d{14}" title="14 chiffres, sans espaces" value={f.siret}
+          onChange={(e) => setF({ ...f, siret: e.target.value.replace(/\s/g, '') })} />
         <button type="submit" disabled={busy}
           className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
           {busy ? 'Enregistrement…' : 'Continuer'}

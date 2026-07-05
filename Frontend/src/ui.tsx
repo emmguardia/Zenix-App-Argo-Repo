@@ -119,7 +119,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback((message: string, type: Toast['type'] = 'success') => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, message, type }]);
+    setToasts((t) => {
+      // Pas de doublon du même message, max 3 toasts à l'écran
+      if (t.some((x) => x.message === message)) return t;
+      return [...t.slice(-2), { id, message, type }];
+    });
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
   }, []);
 
