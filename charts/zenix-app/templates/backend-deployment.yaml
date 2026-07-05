@@ -23,20 +23,26 @@ spec:
     spec:
       imagePullSecrets:
         {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
         fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
       - name: backend
         image: {{ .Values.backend.image }}
         imagePullPolicy: {{ .Values.backend.imagePullPolicy }}
         securityContext:
           allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: false
+          readOnlyRootFilesystem: true
           capabilities:
             drop:
             - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
         ports:
         - containerPort: {{ .Values.backend.port }}
         env:
@@ -156,3 +162,6 @@ spec:
           periodSeconds: 10
           timeoutSeconds: 10
           failureThreshold: 6
+      volumes:
+      - name: tmp
+        emptyDir: {}
