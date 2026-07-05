@@ -41,7 +41,7 @@ sealedSecretDev:
 # â”€â”€ Backend (Node.js) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 backend:
   # PinnÃ©e par la CI (branche develop)
-  image: ghcr.io/emmguardia/zenix-app-back@sha256:a29196be348166c639b85cc1d43b7d369170b8710a37e1c81c974f3e83bcd2eb
+  image: ghcr.io/emmguardia/zenix-app-back@sha256:cabc787f33788a9ce538a3f88d0b99937bdf6665dec062c60b4044df5710cd8d
   imagePullPolicy: Always
   replicas: 1
   strategy:
@@ -71,7 +71,7 @@ backend:
 
 # â”€â”€ Frontend (nginx unprivileged) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 frontend:
-  image: ghcr.io/emmguardia/zenix-app-front@sha256:071c586e9b593cc9f7e203e366f8c686a688a9d404fd4de7e176096c361146e3
+  image: ghcr.io/emmguardia/zenix-app-front@sha256:e3f233d4e3f0afd3da5de986c3d20ad308952044fada46dae3bf5f71361c83ff
   imagePullPolicy: Always
   replicas: 1
   strategy:
