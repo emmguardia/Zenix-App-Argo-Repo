@@ -8,7 +8,7 @@ import Invoices from './pages/Invoices';
 import Documents from './pages/Documents';
 import AdminOrgs from './pages/admin/AdminOrgs';
 import AdminTickets from './pages/admin/AdminTickets';
-import { Spinner } from './ui';
+import { Spinner, ToastProvider } from './ui';
 
 function Routed() {
   const { me, loading } = useAuth();
@@ -27,13 +27,13 @@ function Routed() {
     <Routes>
       <Route element={<Layout />}>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/tickets" element={<Tickets />} />
+        <Route path="/modifications" element={<Tickets />} />
         <Route path="/factures" element={<Invoices />} />
         <Route path="/documents" element={<Documents />} />
         {me.user.admin && (
           <>
             <Route path="/admin/clients" element={<AdminOrgs />} />
-            <Route path="/admin/tickets" element={<AdminTickets />} />
+            <Route path="/admin/demandes" element={<AdminTickets />} />
           </>
         )}
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -45,9 +45,11 @@ function Routed() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routed />
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <Routed />
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   );
 }

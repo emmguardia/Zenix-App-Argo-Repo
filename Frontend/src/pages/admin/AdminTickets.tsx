@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Check, CheckCheck, Clock, Gift, X } from 'lucide-react';
 import { api, type AdminTicket } from '../../api';
-import { Badge, Card, ErrorNote, fmtDate, Spinner, TICKET_STATUS } from '../../ui';
+import { ADMIN_TICKET_STATUS, Badge, Card, ErrorNote, fmtDate, Spinner, useToast } from '../../ui';
 
 const FILTERS = [
-  { value: '',           label: 'Tous' },
-  { value: 'en_attente', label: 'En attente' },
-  { value: 'valide',     label: 'Validés' },
+  { value: 'en_attente', label: 'À décider' },
+  { value: 'valide',     label: 'À faire' },
   { value: 'reporte',    label: 'Reportés' },
-  { value: 'refuse',     label: 'Refusés' },
   { value: 'termine',    label: 'Terminés' },
+  { value: 'refuse',     label: 'Refusés' },
+  { value: '',           label: 'Tous' },
 ];
 
 export default function AdminTickets() {
+  const toast = useToast();
   const [tickets, setTickets] = useState<AdminTicket[]>([]);
   const [filter, setFilter] = useState('en_attente');
   const [loading, setLoading] = useState(true);
@@ -29,25 +30,14 @@ export default function AdminTickets() {
 
   useEffect(load, [load]);
 
-  const decide = async (id: string, decision: string) => {
+  const act = async (id: string, fn: () => Promise<unknown>, msg: string) => {
     setBusy(id);
     try {
-      await api.post(`/admin/tickets/${id}/decision`, { decision });
+      await fn();
+      toast(msg);
       load();
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Erreur');
-    } finally {
-      setBusy(null);
-    }
-  };
-
-  const complete = async (id: string) => {
-    setBusy(id);
-    try {
-      await api.post(`/admin/tickets/${id}/complete`);
-      load();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Erreur');
+      toast(e instanceof Error ? e.message : 'Erreur', 'error');
     } finally {
       setBusy(null);
     }
@@ -55,71 +45,83 @@ export default function AdminTickets() {
 
   if (error) return <ErrorNote message={error} />;
 
-  const btnCls = 'flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium disabled:opacity-50';
+  const btnCls = 'flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-50';
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-900">Tickets — administration</h1>
-        <select
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm"
-        >
-          {FILTERS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-        </select>
+    <div className="space-y-5">
+      <h1 className="text-2xl font-bold text-slate-900">Demandes clients</h1>
+
+      <div className="flex flex-wrap gap-1.5">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              filter === f.value ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-100'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
       </div>
 
       {loading ? <Spinner /> : (
         <div className="space-y-3">
-          {tickets.length === 0 && <Card><p className="text-sm text-slate-500">Aucun ticket.</p></Card>}
+          {tickets.length === 0 && (
+            <Card><p className="py-4 text-center text-sm text-slate-400">Rien ici 👌</p></Card>
+          )}
           {tickets.map((t) => (
-            <Card key={t.id}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
+            <Card key={t.id} className="!p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-900">{t.org_name}</span>
-                    <Badge {...TICKET_STATUS[t.status]} />
-                    {!t.credit_grant_id && t.status === 'en_attente' && (
-                      <Badge label="HORS CRÉDIT" cls="bg-red-100 text-red-800" />
+                    <span className="font-bold text-slate-900">{t.org_name}</span>
+                    <Badge {...ADMIN_TICKET_STATUS[t.status]} />
+                    {!t.credit_grant_id && ['en_attente', 'reporte'].includes(t.status) && (
+                      <Badge label="Hors crédit" cls="bg-red-100 text-red-700" />
                     )}
                   </div>
-                  <p className="mt-1 font-medium text-slate-800">{t.title}</p>
+                  <p className="mt-1.5 font-medium text-slate-800">{t.title}</p>
                   <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{t.description}</p>
                   <p className="mt-2 text-xs text-slate-400">
-                    Par {t.created_by_name || t.created_by_email || '?'} — {fmtDate(t.created_at)}
+                    {t.created_by_name || t.created_by_email || '?'} · {fmtDate(t.created_at)}
                   </p>
                 </div>
 
-                <div className="flex shrink-0 flex-col gap-1.5">
+                <div className="flex shrink-0 flex-wrap gap-1.5 sm:flex-col">
                   {['en_attente', 'reporte'].includes(t.status) && (
                     <>
-                      <button disabled={busy === t.id} onClick={() => decide(t.id, 'valide')}
+                      <button disabled={busy === t.id}
+                        onClick={() => act(t.id, () => api.post(`/admin/tickets/${t.id}/decision`, { decision: 'valide' }), 'Demande validée — au boulot 💪')}
                         className={`${btnCls} bg-blue-600 text-white hover:bg-blue-700`}>
                         <Check className="h-3.5 w-3.5" /> Valider
                       </button>
-                      <button disabled={busy === t.id} onClick={() => decide(t.id, 'refuse')}
-                        className={`${btnCls} bg-red-600 text-white hover:bg-red-700`}>
+                      <button disabled={busy === t.id}
+                        onClick={() => act(t.id, () => api.post(`/admin/tickets/${t.id}/decision`, { decision: 'refuse' }), t.credit_grant_id ? 'Refusée — crédit recrédité au client' : 'Refusée')}
+                        className={`${btnCls} bg-white text-red-600 ring-1 ring-red-200 hover:bg-red-50`}>
                         <X className="h-3.5 w-3.5" /> Refuser
                       </button>
-                      {!t.credit_grant_id && (
+                      {!t.credit_grant_id && t.status === 'en_attente' && (
                         <>
-                          <button disabled={busy === t.id} onClick={() => decide(t.id, 'reporte')}
-                            className={`${btnCls} bg-purple-600 text-white hover:bg-purple-700`}>
-                            <Clock className="h-3.5 w-3.5" /> Mois suivant
+                          <button disabled={busy === t.id}
+                            onClick={() => act(t.id, () => api.post(`/admin/tickets/${t.id}/decision`, { decision: 'reporte' }), 'Reportée — se fera avec les crédits du mois prochain')}
+                            className={`${btnCls} bg-white text-violet-700 ring-1 ring-violet-200 hover:bg-violet-50`}>
+                            <Clock className="h-3.5 w-3.5" /> Mois prochain
                           </button>
-                          <button disabled={busy === t.id} onClick={() => decide(t.id, 'geste_commercial')}
-                            className={`${btnCls} bg-emerald-600 text-white hover:bg-emerald-700`}>
-                            <Gift className="h-3.5 w-3.5" /> Geste commercial
+                          <button disabled={busy === t.id}
+                            onClick={() => act(t.id, () => api.post(`/admin/tickets/${t.id}/decision`, { decision: 'geste_commercial' }), 'Validée en geste commercial 🎁')}
+                            className={`${btnCls} bg-white text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50`}>
+                            <Gift className="h-3.5 w-3.5" /> Offrir
                           </button>
                         </>
                       )}
                     </>
                   )}
                   {t.status === 'valide' && (
-                    <button disabled={busy === t.id} onClick={() => complete(t.id)}
-                      className={`${btnCls} bg-green-600 text-white hover:bg-green-700`}>
-                      <CheckCheck className="h-3.5 w-3.5" /> Terminer
+                    <button disabled={busy === t.id}
+                      onClick={() => act(t.id, () => api.post(`/admin/tickets/${t.id}/complete`), 'Marquée terminée ✅')}
+                      className={`${btnCls} bg-emerald-600 text-white hover:bg-emerald-700`}>
+                      <CheckCheck className="h-3.5 w-3.5" /> Terminé
                     </button>
                   )}
                 </div>

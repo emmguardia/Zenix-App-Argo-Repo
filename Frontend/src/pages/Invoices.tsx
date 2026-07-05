@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Receipt } from 'lucide-react';
 import { api, type Invoice } from '../api';
 import { useAuth } from '../auth';
 import { Badge, Card, ErrorNote, fmtDate, fmtMoney, Spinner } from '../ui';
 
 const INVOICE_STATUS: Record<string, { label: string; cls: string }> = {
-  paid:          { label: 'Payée',     cls: 'bg-green-100 text-green-800' },
-  open:          { label: 'En cours',  cls: 'bg-amber-100 text-amber-800' },
-  void:          { label: 'Annulée',   cls: 'bg-slate-200 text-slate-600' },
-  uncollectible: { label: 'Impayée',   cls: 'bg-red-100 text-red-800' },
-  draft:         { label: 'Brouillon', cls: 'bg-slate-200 text-slate-600' },
+  paid:          { label: 'Payée',      cls: 'bg-emerald-100 text-emerald-800' },
+  open:          { label: 'En attente', cls: 'bg-amber-100 text-amber-800' },
+  void:          { label: 'Annulée',    cls: 'bg-slate-200 text-slate-600' },
+  uncollectible: { label: 'Impayée',    cls: 'bg-red-100 text-red-700' },
+  draft:         { label: 'En préparation', cls: 'bg-slate-200 text-slate-600' },
 };
 
 export default function Invoices() {
@@ -27,52 +27,49 @@ export default function Invoices() {
       .finally(() => setLoading(false));
   }, [currentOrg]);
 
-  if (!currentOrg) return <Card><p className="text-slate-600">Aucune organisation liée.</p></Card>;
+  if (!currentOrg) {
+    return <Card><p className="text-slate-600">Votre espace n'est pas encore relié à un site.</p></Card>;
+  }
   if (loading) return <Spinner />;
   if (error) return <ErrorNote message={error} />;
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold text-slate-900">Factures</h1>
+    <div className="space-y-5">
+      <h1 className="text-2xl font-bold text-slate-900">Mes factures</h1>
       <Card>
         {invoices.length === 0 ? (
-          <p className="text-sm text-slate-500">Aucune facture pour l'instant.</p>
+          <div className="py-6 text-center">
+            <Receipt className="mx-auto h-10 w-10 text-slate-300" />
+            <p className="mt-2 text-sm text-slate-400">
+              Vos factures apparaîtront ici après votre premier prélèvement.
+            </p>
+          </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
-                <th className="pb-2">Numéro</th>
-                <th className="pb-2">Date</th>
-                <th className="pb-2">Montant</th>
-                <th className="pb-2">Statut</th>
-                <th className="pb-2 text-right">PDF</th>
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id} className="border-b border-slate-100 last:border-0">
-                  <td className="py-2.5 font-medium text-slate-900">{inv.number ?? '—'}</td>
-                  <td className="py-2.5 text-slate-500">{fmtDate(inv.date)}</td>
-                  <td className="py-2.5">{fmtMoney(inv.amount, inv.currency)}</td>
-                  <td className="py-2.5">
-                    <Badge {...(INVOICE_STATUS[inv.status] ?? { label: inv.status, cls: 'bg-slate-200 text-slate-600' })} />
-                  </td>
-                  <td className="py-2.5 text-right">
-                    {inv.pdf && (
-                      <a
-                        href={inv.pdf}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-blue-600 hover:underline"
-                      >
-                        <Download className="h-4 w-4" /> Télécharger
-                      </a>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="divide-y divide-slate-100">
+            {invoices.map((inv) => (
+              <li key={inv.id} className="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0">
+                <div>
+                  <p className="font-semibold text-slate-900">{fmtMoney(inv.amount, inv.currency)}</p>
+                  <p className="text-sm text-slate-500">
+                    {fmtDate(inv.date)}{inv.number ? ` · n° ${inv.number}` : ''}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Badge {...(INVOICE_STATUS[inv.status] ?? { label: inv.status, cls: 'bg-slate-200 text-slate-600' })} />
+                  {inv.pdf && (
+                    <a
+                      href={inv.pdf}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                    >
+                      <Download className="h-4 w-4" /> PDF
+                    </a>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </Card>
     </div>

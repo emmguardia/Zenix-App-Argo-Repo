@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Send } from 'lucide-react';
+import { Info, Send } from 'lucide-react';
 import { api, type Ticket } from '../api';
 import { useAuth } from '../auth';
-import { Badge, Card, ErrorNote, fmtDate, Spinner, TICKET_STATUS } from '../ui';
+import { Badge, Card, ErrorNote, fmtDate, Spinner, TICKET_STATUS, useToast } from '../ui';
 
 export default function Tickets() {
   const { currentOrg } = useAuth();
+  const toast = useToast();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -13,7 +14,6 @@ export default function Tickets() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [notice, setNotice] = useState('');
 
   const load = useCallback(() => {
     if (!currentOrg) { setLoading(false); return; }
@@ -29,98 +29,109 @@ export default function Tickets() {
 
   useEffect(load, [load]);
 
-  if (!currentOrg) return <Card><p className="text-slate-600">Aucune organisation liée.</p></Card>;
+  if (!currentOrg) {
+    return <Card><p className="text-slate-600">Votre espace n'est pas encore relié à un site.</p></Card>;
+  }
   if (loading) return <Spinner />;
   if (error) return <ErrorNote message={error} />;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
-    setNotice('');
     try {
-      const res = await api.post<{ creditConsumed: boolean; balance: number; warning: string | null }>(
+      const res = await api.post<{ creditConsumed: boolean; balance: number }>(
         `/orgs/${currentOrg.id}/tickets`,
         { title, description }
       );
       setTitle('');
       setDescription('');
-      if (res.warning) setNotice(res.warning);
+      toast(res.creditConsumed
+        ? 'Demande envoyée ! On s\'en occupe très vite.'
+        : 'Demande envoyée ! Comme vous n\'avez plus de modification ce mois-ci, on revient vers vous rapidement.');
       load();
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : 'Erreur lors de la soumission');
+      toast(err instanceof Error ? err.message : "L'envoi a échoué, réessayez", 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-bold text-slate-900">Demandes de modification</h1>
-        <span className="text-sm text-slate-500">
-          Crédits restants : <span className="font-semibold text-slate-900">{balance ?? '—'}</span>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold text-slate-900">Mes modifications</h1>
+        <span className={`rounded-full px-3 py-1 text-sm font-semibold ${
+          (balance ?? 0) > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+        }`}>
+          {balance ?? 0} restante{(balance ?? 0) > 1 ? 's' : ''} ce mois-ci
         </span>
       </div>
 
-      {balance === 0 && (
-        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <span>
-            Vous n'avez plus de crédit ce mois-ci. Vous pouvez quand même soumettre votre demande :
-            elle sera étudiée manuellement (traitement au mois suivant, geste commercial ou devis).
-          </span>
-        </div>
-      )}
-
-      <Card title="Nouvelle demande">
+      <Card title="Que souhaitez-vous changer sur votre site ?">
         <form onSubmit={submit} className="space-y-3">
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="Titre (ex. : Changer la photo d'accueil)"
+            placeholder="En quelques mots — ex. : Changer les horaires d'ouverture"
             required
             minLength={3}
             maxLength={255}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
           />
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Décrivez précisément la modification souhaitée…"
+            placeholder={"Décrivez le changement le plus précisément possible :\n• Sur quelle page ?\n• Quel texte ou quelle image remplacer, et par quoi ?"}
             required
             maxLength={5000}
-            rows={4}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+            rows={5}
+            className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none"
           />
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-slate-400">1 demande = 1 crédit, décompté à l'envoi.</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="flex items-center gap-1.5 text-xs text-slate-400">
+              <Info className="h-3.5 w-3.5" />
+              Chaque demande utilise 1 modification de votre abonnement.
+            </p>
             <button
               type="submit"
               disabled={submitting}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
             >
-              <Send className="h-4 w-4" /> {submitting ? 'Envoi…' : 'Envoyer'}
+              <Send className="h-4 w-4" /> {submitting ? 'Envoi…' : 'Envoyer ma demande'}
             </button>
           </div>
-          {notice && <p className="text-sm text-amber-700">{notice}</p>}
         </form>
+        {balance === 0 && (
+          <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Vous avez utilisé toutes vos modifications ce mois-ci. Vous pouvez quand même envoyer
+            votre demande : selon le cas, on la fera le mois prochain, ou on vous proposera une solution.
+          </p>
+        )}
       </Card>
 
-      <Card title={`Historique (${tickets.length})`}>
+      <Card title={tickets.length ? 'Vos demandes' : undefined}>
         {tickets.length === 0 ? (
-          <p className="text-sm text-slate-500">Aucune demande pour l'instant.</p>
+          <p className="py-2 text-center text-sm text-slate-400">
+            Vous n'avez pas encore fait de demande. La première, c'est au-dessus 👆
+          </p>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {tickets.map((t) => (
-              <li key={t.id} className="flex items-start justify-between gap-4 py-3">
-                <div>
-                  <p className="font-medium text-slate-900">{t.title}</p>
-                  <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{t.description}</p>
-                  <p className="mt-1 text-xs text-slate-400">Soumis le {fmtDate(t.created_at)}</p>
-                </div>
-                <Badge {...TICKET_STATUS[t.status]} />
-              </li>
-            ))}
+            {tickets.map((t) => {
+              const st = TICKET_STATUS[t.status];
+              return (
+                <li key={t.id} className="flex items-start gap-3 py-4 first:pt-0 last:pb-0">
+                  <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${st.dot}`} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold text-slate-900">{t.title}</p>
+                      <Badge label={st.label} cls={st.cls} />
+                    </div>
+                    <p className="mt-0.5 line-clamp-2 text-sm text-slate-500">{t.description}</p>
+                    <p className="mt-1 text-xs text-slate-400">Envoyée le {fmtDate(t.created_at)}</p>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>
