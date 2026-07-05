@@ -18,6 +18,7 @@ npm-debug.log*
 
 # ── Builds ───────────────────────────────────────────────────────────────────
 **/dist/
+*.tsbuildinfo
 
 # ── Docs de travail (brainstorm, non publiées) ───────────────────────────────
 docs/SPEC-ESPACE-CLIENT.md
