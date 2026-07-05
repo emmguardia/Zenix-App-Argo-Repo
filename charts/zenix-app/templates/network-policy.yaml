@@ -1,0 +1,42 @@
+{{- /* NetworkPolicy — isole le namespace.
+       Frontend : ingress ouvert (Traefik vit dans kube-system, routage géré au
+       niveau cluster). Backend : joignable UNIQUEMENT depuis le frontend (nginx
+       proxifie /api) — aucun autre pod du cluster ne peut l'appeler en direct. */}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-ingress
+  namespace: {{ include "zenix-app.namespace" . }}
+  labels:
+    {{- include "zenix-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: zenix-app-frontend
+  policyTypes:
+    - Ingress
+  ingress:
+    - {}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-from-frontend-only
+  namespace: {{ include "zenix-app.namespace" . }}
+  labels:
+    {{- include "zenix-app.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: zenix-app-backend
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: zenix-app-frontend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.port }}

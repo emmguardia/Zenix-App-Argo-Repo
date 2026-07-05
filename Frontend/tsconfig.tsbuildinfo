@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/auth.tsx","./src/main.tsx","./src/ui.tsx","./src/components/layout.tsx","./src/pages/dashboard.tsx","./src/pages/documents.tsx","./src/pages/invoices.tsx","./src/pages/login.tsx","./src/pages/tickets.tsx","./src/pages/admin/adminorgs.tsx","./src/pages/admin/admintickets.tsx"],"version":"5.9.3"}

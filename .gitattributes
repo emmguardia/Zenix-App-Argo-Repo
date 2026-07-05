@@ -1,0 +1,7 @@
+# Normalise les fins de ligne (LF partout) — évite les soucis d'encodage
+# entre Windows (dev) et Linux (CI/cluster)
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
