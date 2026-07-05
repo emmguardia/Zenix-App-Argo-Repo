@@ -66,16 +66,26 @@ router.post('/profile', async (req, res) => {
   let org = await getUserOrg(req.user.uid);
 
   if (!org) {
-    // Nouveau client : l'organisation naît ici
+    // Nouveau client : l'organisation naît ici (transaction : org + liaison, tout ou rien)
     const id = randomUUID();
-    await pool.execute(
-      `INSERT INTO organizations (id, name, legal_type, siret, billing_address,
-         contact_first_name, contact_last_name, contact_phone, onboarding_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'plan')`,
-      [id, `${d.first_name} ${d.last_name}`, d.siret ? 'entreprise' : 'particulier',
-       d.siret || null, d.address, d.first_name, d.last_name, d.phone]
-    );
-    await pool.execute('INSERT INTO memberships (user_id, organization_id) VALUES (?, ?)', [req.user.uid, id]);
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.execute(
+        `INSERT INTO organizations (id, name, legal_type, siret, billing_address,
+           contact_first_name, contact_last_name, contact_phone, onboarding_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'plan')`,
+        [id, `${d.first_name} ${d.last_name}`, d.siret ? 'entreprise' : 'particulier',
+         d.siret || null, d.address, d.first_name, d.last_name, d.phone]
+      );
+      await conn.execute('INSERT INTO memberships (user_id, organization_id) VALUES (?, ?)', [req.user.uid, id]);
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
     org = { id, onboarding_status: 'plan' };
   } else {
     // Client existant (fiche pré-créée par l'admin) : on complète
