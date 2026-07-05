@@ -35,7 +35,7 @@ backend:
     STRIPE_PRICE_RELAX: "price_1Tpq762XjKwHiB5JBdNkQyDz"
     STRIPE_PRICE_PRO: "price_1Tpq762XjKwHiB5JHiz1C7GQ"
     # Clé publique Stripe (pk_test_... — PAS un secret, Dashboard → Clés API)
-    STRIPE_PUBLISHABLE_KEY: ""
+    STRIPE_PUBLISHABLE_KEY: "pk_test_51RGyw32XjKwHiB5J1a4wvTeBhIrgbiyPQUdLJtV4ZMdwh1VdIJMJcgv4UT2roHeixiHxaEdFCxt4XfvcJsJtTWSh00GQTr1ooF"
   resources:
     requests:
       cpu: "50m"
