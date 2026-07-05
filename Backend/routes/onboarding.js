@@ -97,7 +97,10 @@ router.post('/profile', async (req, res) => {
   res.json({ step: org.onboarding_status });
 });
 
-const planSchema = z.object({ plan: z.enum(['start', 'relax', 'pro']) });
+const planSchema = z.object({
+  plan:     z.enum(['start', 'relax', 'pro']),
+  interval: z.enum(['monthly', 'annual']).default('monthly'),
+});
 
 /* ── POST /api/onboarding/plan ─────────────────────────────────────────── */
 router.post('/plan', async (req, res) => {
@@ -111,12 +114,12 @@ router.post('/plan', async (req, res) => {
   }
 
   await getPool().execute(
-    "UPDATE organizations SET plan = ?, onboarding_status = 'review' WHERE id = ?",
-    [parsed.data.plan, org.id]
+    "UPDATE organizations SET plan = ?, billing_interval = ?, onboarding_status = 'review' WHERE id = ?",
+    [parsed.data.plan, parsed.data.interval, org.id]
   );
-  await audit('client', req.user.uid, 'onboarding.plan', 'organization', org.id, { plan: parsed.data.plan });
+  await audit('client', req.user.uid, 'onboarding.plan', 'organization', org.id, parsed.data);
   notifyDiscord('🆕 Nouvelle souscription à valider',
-    `**${org.contact_first_name} ${org.contact_last_name}** a choisi **Zenix ${parsed.data.plan}** — valide ses infos dans l'admin.`);
+    `**${org.contact_first_name} ${org.contact_last_name}** a choisi **Zenix ${parsed.data.plan}** (${parsed.data.interval === 'annual' ? 'engagement 1 an — 12e mois offert' : 'mensuel sans engagement'}) — valide ses infos dans l'admin.`);
   res.json({ step: 'review' });
 });
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { BadgeCheck, ChevronDown, ChevronUp, Download, Plus, Trash2, Upload, UserPlus } from 'lucide-react';
+import { BadgeCheck, ChevronDown, ChevronUp, Download, Plus, Rocket, Trash2, Upload, UserPlus } from 'lucide-react';
 import { api, type AdminDocument, type AdminOrganization, type StripeCustomer } from '../../api';
 import { Badge, Card, ErrorNote, fmtDate, Modal, ORG_STATUS, PLAN_LABELS, Spinner, useToast } from '../../ui';
 
@@ -168,6 +168,7 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
   const [busy, setBusy] = useState(false);
   const [documents, setDocuments] = useState<AdminDocument[] | null>(null);
   const [docType, setDocType] = useState('contrat');
+  const [confirmLaunch, setConfirmLaunch] = useState(false);
 
   const loadDocs = useCallback(() => {
     api.get<{ documents: AdminDocument[] }>(`/admin/orgs/${org.id}/documents`)
@@ -200,7 +201,41 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
         <p className="text-slate-500">Adresse : <span className="font-medium text-slate-800">{org.billing_address ?? '—'}</span></p>
         <p className="text-slate-500">Compte(s) : <span className="font-medium text-slate-800">{org.members ?? 'aucun'}</span></p>
         <p className="text-slate-500">Stripe : <span className="font-mono text-xs text-slate-700">{org.stripe_customer_id ?? '—'}</span></p>
+        <p className="text-slate-500">Facturation : <span className="font-medium text-slate-800">
+          {org.billing_interval === 'annual' ? 'Engagement 1 an (12ᵉ mois offert)' : 'Mensuel sans engagement'}
+          {org.custom_price_id && ' · tarif spécial'}</span></p>
       </section>
+
+      {/* Lancement de l'abonnement : carte enregistrée, site en ligne → GO */}
+      {org.onboarding_status === 'done' && !org.stripe_subscription_id && org.stripe_customer_id && (
+        <button disabled={busy} onClick={() => setConfirmLaunch(true)}
+          className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+          <Rocket className="h-4 w-4" /> Mettre en ligne & lancer l'abonnement
+        </button>
+      )}
+      <Modal open={confirmLaunch} title={`Lancer l'abonnement de ${org.name} ?`} onClose={() => setConfirmLaunch(false)}>
+        <div className="space-y-4">
+          <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+            Le <strong>premier prélèvement part immédiatement</strong> sur sa carte enregistrée
+            et fixe la date anniversaire. Son site doit être en ligne.
+            {org.custom_price_id && <> Tarif spécial appliqué : <span className="font-mono text-xs">{org.custom_price_id}</span>.</>}
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmLaunch(false)}
+              className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50">
+              Annuler
+            </button>
+            <button disabled={busy}
+              onClick={() => {
+                setConfirmLaunch(false);
+                run(() => api.post(`/admin/orgs/${org.id}/activate`), `${org.name} : abonnement lancé 🚀 (crédits via le webhook)`);
+              }}
+              className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50">
+              Oui, lancer
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Validation des infos (étape review) */}
       {org.onboarding_status === 'review' && (

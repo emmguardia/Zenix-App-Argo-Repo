@@ -71,7 +71,20 @@ router.get('/stats', async (_req, res) => {
       "SELECT COUNT(*) AS count FROM tickets WHERE status = 'en_attente'"
     );
 
+    // Les 10 derniers paiements (factures), avec le nom du client
+    const recent = await stripe.invoices.list({ limit: 10, expand: ['data.customer'] });
+    const lastPayments = recent.data.map((inv) => ({
+      id:       inv.id,
+      number:   inv.number,
+      customer: (typeof inv.customer === 'object' && inv.customer && 'name' in inv.customer
+        ? (inv.customer.name || inv.customer.email) : inv.customer_name || inv.customer_email) || '?',
+      amount:   inv.status === 'paid' ? inv.amount_paid : inv.amount_due,
+      status:   inv.status,
+      date:     inv.created,
+    }));
+
     res.json({
+      lastPayments,
       mrr,
       activeSubs,
       monthlyRevenue: [...monthly.entries()].map(([month, amount]) => ({ month, amount })),

@@ -33,6 +33,8 @@ const orgSchema = z.object({
   vat_number:         z.string().trim().max(20).optional().nullable(),
   billing_address:    z.string().trim().max(1000).optional().nullable(),
   plan:               z.enum(['start', 'relax', 'pro']).optional().nullable(),
+  billing_interval:   z.enum(['monthly', 'annual']).optional(),
+  custom_price_id:    z.string().trim().max(255).optional().nullable(),
   linked_domain:      z.string().trim().max(255).optional().nullable(),
   stripe_customer_id: z.string().trim().max(255).optional().nullable(),
 });
@@ -143,11 +145,13 @@ router.post('/:id/documents', uploadDoc.single('file'), async (req, res) => {
   const docId = randomUUID();
   const ext = req.file.mimetype === 'application/zip' ? 'zip' : 'pdf';
   const r2Key = `orgs/${org.id}/${type}-${docId}.${ext}`;
+  // multer livre le nom de fichier en latin1 → ré-encode (accents)
+  const filename = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
   await putObject(r2Key, req.file.buffer, req.file.mimetype);
   await getPool().execute(
     `INSERT INTO documents (id, organization_id, type, r2_key, filename, uploaded_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [docId, org.id, type, r2Key, req.file.originalname, req.user.uid]
+    [docId, org.id, type, r2Key, filename, req.user.uid]
   );
 
   // Contrat déposé pendant l'étape contrat → le client est prévenu côté UI
@@ -226,7 +230,8 @@ router.post('/:id/activate', async (req, res) => {
   if (!org.stripe_customer_id) return res.status(400).json({ error: 'Aucun customer Stripe lié' });
   if (!org.plan) return res.status(400).json({ error: 'Aucune formule définie' });
 
-  const priceId = PLAN_PRICES[org.plan]?.();
+  // Tarif spécial client (ex. grille Asso) prioritaire sur le tarif public
+  const priceId = org.custom_price_id || PLAN_PRICES[org.plan]?.();
   if (!priceId) return res.status(500).json({ error: `STRIPE_PRICE_${org.plan.toUpperCase()} non configuré` });
 
   const stripe = getStripe();
@@ -241,6 +246,10 @@ router.post('/:id/activate', async (req, res) => {
     customer:               org.stripe_customer_id,
     items:                  [{ price: priceId }],
     default_payment_method: paymentMethods.data[0].id,
+    metadata: {
+      zenix_org:  org.id,
+      engagement: org.billing_interval === 'annual' ? '1an-12e-mois-offert' : 'mensuel',
+    },
   });
 
   await pool.execute(

@@ -26,6 +26,8 @@ export interface AdminOrganization extends Organization {
   contact_last_name: string | null;
   contact_phone: string | null;
   validated_at: string | null;
+  billing_interval: 'monthly' | 'annual';
+  custom_price_id: string | null;
 }
 
 export interface OnboardingState {
@@ -51,6 +53,7 @@ export interface AdminStats {
   byPlan: { plan: string; count: number }[];
   statuses: { status: string; count: number }[];
   pendingTickets: number;
+  lastPayments: { id: string; number: string | null; customer: string; amount: number; status: string; date: number }[];
 }
 
 export interface AdminDocument {

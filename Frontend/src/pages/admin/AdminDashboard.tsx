@@ -3,7 +3,15 @@ import { Link } from 'react-router-dom';
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { AlertTriangle, Inbox, TrendingUp, Users } from 'lucide-react';
 import { api, type AdminStats } from '../../api';
-import { Card, ErrorNote, fmtMoney, PLAN_LABELS, Spinner } from '../../ui';
+import { Badge, Card, ErrorNote, fmtDate, fmtMoney, PLAN_LABELS, Spinner } from '../../ui';
+
+const PAYMENT_STATUS: Record<string, { label: string; cls: string }> = {
+  paid:          { label: 'Payée',      cls: 'bg-emerald-100 text-emerald-800' },
+  open:          { label: 'En attente', cls: 'bg-amber-100 text-amber-800' },
+  uncollectible: { label: 'Impayée',    cls: 'bg-red-100 text-red-700' },
+  void:          { label: 'Annulée',    cls: 'bg-slate-200 text-slate-600' },
+  draft:         { label: 'Brouillon',  cls: 'bg-slate-200 text-slate-600' },
+};
 
 const PLAN_COLORS: Record<string, string> = { start: '#60a5fa', relax: '#2563eb', pro: '#1e3a8a' };
 const MONTH_LABELS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
@@ -121,6 +129,38 @@ export default function AdminDashboard() {
           )}
         </Card>
       </div>
+
+      {/* Derniers paiements */}
+      <Card title="Les 10 derniers paiements">
+        {stats.lastPayments.length === 0 ? (
+          <p className="py-4 text-center text-sm text-slate-400">Aucun paiement pour l'instant.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-400">
+                <th className="pb-2">Client</th>
+                <th className="pb-2">Date</th>
+                <th className="pb-2">N° facture</th>
+                <th className="pb-2 text-right">Montant</th>
+                <th className="pb-2 text-right">Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              {stats.lastPayments.map((p) => (
+                <tr key={p.id} className="border-b border-slate-100 last:border-0">
+                  <td className="py-2.5 font-medium text-slate-900">{p.customer}</td>
+                  <td className="py-2.5 text-slate-500">{fmtDate(p.date)}</td>
+                  <td className="py-2.5 text-slate-500">{p.number ?? '—'}</td>
+                  <td className="py-2.5 text-right font-semibold text-slate-900">{fmtMoney(p.amount)}</td>
+                  <td className="py-2.5 text-right">
+                    <Badge {...(PAYMENT_STATUS[p.status] ?? { label: p.status, cls: 'bg-slate-200 text-slate-600' })} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
     </div>
   );
 }

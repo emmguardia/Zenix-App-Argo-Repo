@@ -216,39 +216,27 @@ router.post('/:orgId/payment/setup-intent', async (req, res) => {
   res.json({ clientSecret: intent.client_secret });
 });
 
-/* ── POST /api/orgs/:orgId/payment/subscribe ────────────────────────────────
- * Après confirmation du SetupIntent côté Stripe Elements : lance l'abonnement.
- * Le 1er prélèvement part immédiatement ; crédits + statut actif arrivent
- * par le webhook invoice.paid. */
-router.post('/:orgId/payment/subscribe', async (req, res) => {
+/* ── POST /api/orgs/:orgId/payment/card-saved ───────────────────────────────
+ * Après confirmation du SetupIntent (0€ prélevé) : la carte est enregistrée.
+ * AUCUN prélèvement ici — c'est Enzo qui lance l'abonnement depuis l'admin
+ * quand le site est en ligne (conformité : pas de prélèvement avant mise en
+ * ligne). L'onboarding est terminé, le statut reste "pending". */
+router.post('/:orgId/payment/card-saved', async (req, res) => {
   if (req.org.onboarding_status !== 'payment') {
     return res.status(409).json({ error: 'Le paiement n\'est pas encore disponible' });
   }
-  if (req.org.stripe_subscription_id) return res.status(409).json({ error: 'Abonnement déjà actif' });
   if (!req.org.stripe_customer_id) return res.status(400).json({ error: 'Carte non enregistrée' });
 
-  const priceId = PLAN_PRICES[req.org.plan]?.();
-  if (!priceId) return res.status(500).json({ error: `Offre ${req.org.plan} non configurée` });
-
-  const stripe = getStripe();
-  const pms = await stripe.paymentMethods.list({ customer: req.org.stripe_customer_id, limit: 1 });
+  const pms = await getStripe().paymentMethods.list({ customer: req.org.stripe_customer_id, limit: 1 });
   if (!pms.data.length) return res.status(400).json({ error: 'Aucune carte enregistrée — réessayez' });
 
-  const subscription = await stripe.subscriptions.create({
-    customer:               req.org.stripe_customer_id,
-    items:                  [{ price: priceId }],
-    default_payment_method: pms.data[0].id,
-  });
-
   await getPool().execute(
-    "UPDATE organizations SET stripe_subscription_id = ?, onboarding_status = 'done' WHERE id = ?",
-    [subscription.id, req.org.id]
+    "UPDATE organizations SET onboarding_status = 'done' WHERE id = ?", [req.org.id]
   );
-  await audit('client', req.user.uid, 'subscription.create', 'organization', req.org.id, {
-    subscription: subscription.id, plan: req.org.plan,
-  });
-  notifyDiscord('🚀 Abonnement souscrit', `**${req.org.name}** — ${req.org.plan} (1er prélèvement en cours)`);
-  res.json({ subscribed: true });
+  await audit('client', req.user.uid, 'payment.card-saved', 'organization', req.org.id);
+  notifyDiscord('💳 Carte enregistrée (0€)',
+    `**${req.org.name}** a tout terminé — mets son site en ligne puis lance l'abonnement depuis l'admin.`);
+  res.json({ saved: true });
 });
 
 export default router;

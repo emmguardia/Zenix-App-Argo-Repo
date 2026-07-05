@@ -110,15 +110,16 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
   );
 }
 
-/* ── Étape 2 : choix de l'offre ────────────────────────────────────────── */
+/* ── Étape 2 : choix de l'offre (mensuel ou engagement 1 an) ───────────── */
 function StepPlan({ onNext }: { onNext: (s: OnboardingState['step']) => void }) {
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
+  const [interval, setInterval] = useState<'monthly' | 'annual'>('monthly');
 
   const choose = async (plan: string) => {
     setBusy(plan);
     try {
-      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/plan', { plan });
+      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/plan', { plan, interval });
       onNext(r.step);
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -129,7 +130,24 @@ function StepPlan({ onNext }: { onNext: (s: OnboardingState['step']) => void }) 
   return (
     <div className="space-y-3">
       <h2 className="text-center text-lg font-bold text-slate-900">Choisissez votre offre</h2>
-      <p className="-mt-1 text-center text-sm text-slate-500">Sans engagement de durée — hébergement, sécurité et sauvegardes toujours inclus.</p>
+      <p className="-mt-1 text-center text-sm text-slate-500">Hébergement, sécurité et sauvegardes toujours inclus.</p>
+
+      <div className="mx-auto flex w-fit rounded-xl bg-slate-200 p-1">
+        <button onClick={() => setInterval('monthly')}
+          className={`rounded-lg px-4 py-1.5 text-sm font-medium ${interval === 'monthly' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+          Mensuel, sans engagement
+        </button>
+        <button onClick={() => setInterval('annual')}
+          className={`rounded-lg px-4 py-1.5 text-sm font-medium ${interval === 'annual' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+          Engagement 1 an <span className="font-bold text-emerald-600">· 1 mois offert</span>
+        </button>
+      </div>
+      {interval === 'annual' && (
+        <p className="text-center text-xs text-slate-500">
+          Vous restez prélevé mois par mois (rien à avancer) — et le 12ᵉ mois est offert (0 €).
+        </p>
+      )}
+
       {PLANS.map((p) => (
         <button key={p.key} onClick={() => choose(p.key)} disabled={!!busy}
           className={`w-full rounded-2xl border-2 bg-white p-5 text-left transition-all hover:border-blue-500 hover:shadow-md disabled:opacity-60 ${
@@ -253,8 +271,10 @@ function StepPayment({ orgId, plan, onNext }: { orgId?: string; plan?: string | 
     <Card title="Dernière étape : votre moyen de paiement">
       {planInfo && (
         <p className="mb-4 -mt-2 text-sm text-slate-500">
-          {planInfo.name} — <span className="font-semibold text-slate-700">{planInfo.price}/mois</span>, sans engagement.
-          Le premier prélèvement a lieu aujourd'hui, puis chaque mois à la même date.
+          {planInfo.name} — <span className="font-semibold text-slate-700">{planInfo.price}/mois</span>.{' '}
+          <span className="font-semibold text-emerald-700">Aucun prélèvement aujourd'hui</span> :
+          votre carte est simplement enregistrée de façon sécurisée. Le premier prélèvement
+          n'aura lieu qu'à la mise en ligne de votre site.
         </p>
       )}
 
@@ -302,11 +322,11 @@ function PaymentForm({ orgId, onNext }: { orgId: string; onNext: (s: OnboardingS
         toast(result.error.message || 'La carte a été refusée', 'error');
         return;
       }
-      await api.post(`/orgs/${orgId}/payment/subscribe`);
-      toast('Abonnement activé — bienvenue chez Zenix ! 🎉');
+      await api.post(`/orgs/${orgId}/payment/card-saved`);
+      toast('Carte enregistrée — bienvenue chez Zenix ! 🎉');
       onNext('done');
     } catch (err) {
-      toast(err instanceof Error ? err.message : 'Le paiement a échoué', 'error');
+      toast(err instanceof Error ? err.message : "L'enregistrement a échoué", 'error');
     } finally { setBusy(false); }
   };
 
@@ -315,9 +335,11 @@ function PaymentForm({ orgId, onNext }: { orgId: string; onNext: (s: OnboardingS
       <PaymentElement />
       <button type="submit" disabled={busy || !stripe}
         className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-        {busy ? 'Traitement…' : "S'abonner et payer"}
+        {busy ? 'Traitement…' : "S'abonner — 0 € aujourd'hui"}
       </button>
-      <p className="text-center text-xs text-slate-400">Commande avec obligation de paiement · Paiement sécurisé par Stripe</p>
+      <p className="text-center text-xs text-slate-400">
+        Commande avec obligation de paiement à la mise en ligne · Carte sécurisée par Stripe
+      </p>
     </form>
   );
 }
