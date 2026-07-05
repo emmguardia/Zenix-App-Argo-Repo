@@ -1,13 +1,11 @@
-# Zenix App â€” Espace Client (DEV, namespace zenix-app-dev, branche develop)
-# UtilisÃ© par l'Application ArgoCD "zenix-app-dev" (argocd/zenix-app-dev.yaml)
-# Les images :dev sont pinnÃ©es par digest par la CI Ã  chaque push sur develop
+# Zenix App - Espace Client (DEV, namespace zenix-app-dev, branche develop)
+# Utilise par l'Application ArgoCD "zenix-app-dev" (argocd/zenix-app-dev.yaml)
+# Les images :dev sont pinnees par digest par la CI a chaque push sur develop
 #
-# SealedSecret Dev : depuis la racine du repo :
-#   kubeseal --format yaml --cert pub-cert.pem --scope namespace-wide `
-#     --namespace zenix-app-dev < charts/zenix-app/secrets/zenix-app-secrets.yaml
-# Copie le bloc spec.encryptedData de la sortie et colle-le sous
-# sealedSecretDev.encryptedData ci-dessous.
-# âš ï¸ Pense Ã  adapter le plain avant (clÃ©s Stripe TEST, URLs dev) puis remets-le.
+# SealedSecret Dev : regenerer le bloc encryptedData ci-dessous avec :
+#   kubeseal --format yaml --cert pub-cert.pem --scope namespace-wide \
+#     -f <plain avec namespace: zenix-app-dev>
+# puis coller les cles sous sealedSecretDev.encryptedData.
 
 namespace: zenix-app-dev
 hostname: appdev.zenixweb.fr
@@ -38,9 +36,9 @@ sealedSecretDev:
     stripe-secret-key: AgAmw6xNDZqC9dow5HDdx0VYgyZ0MQVdJ6pJlq+ykpcketEk0rWWsluPzCTQk1tNszg+DpCDG77HpNR640PfD8V2mjYP4W9XQKZIGzDRbXU4vLkoJMW4N9WR6mNyDKJR/f/1QXCzlIQOREiTuuLw8x1lGdSTWStdyb+x0oJPAxuQgILzjFG5KWi8IA2OfZeyptRXjC/pv53QUxAziXOtZskffxx8chonH5yTLbuFkmLg6tABdZ5/gCxB9m4sU05B9na1g/KKC8w8fOltiGLOT1I0ALQaguHCMD/TgUleAzV7K3G/n4ZqkLcvqG9AR0JvkSUNfaA36GZoUaKPLjzTCnjW9JX1mB96Tq9Ofdx1NRMtuxg290rfv5gLz9n9mM5xhw7RDbOUa2nM8Bx/Yq7vWva2aeMU3ghZM54wRJIXpyuPpNy6LxYjHmwdU1QvFcZT8lwMaiU4WFJLErHXi9L0q4JV2qfIGnwscHAc+eKcVcN3iB2Pd1T+tuFh6IRlgEIIPB1OsbK4/EosUmXm7FQK+6ETaJE8mSkQ0+StK12l0Iusv7EyYQ+XF8t4nhbkgMQc/YoZD+7nA3Qbsx03FOQMVObzij4KMVuHszyyKvSGV16K5Bo3rnNGnJSUFbtstMP4fppKQ09BEc/CkTx9shjZJ0wNsFGGSHD8Jn2CFJSTGpm3VXHE4Zuh76gUgJMrkeZMeA31MuV/kUsQk4J2nQUZRt+rQdCJA2U05ctckg3uBjwsJpY/7mPf8UcebBcvtkPscsxEbhHEHepLvIqohSYLg7DSXPyJyefFxX5EMBEpWcdwcX1KCPtuiINAUdN1nudquzTwty8lG4ghex6o9w==
     stripe-webhook-secret: AgA4+WC3NXmvSHkm30ErvKWQ2lG7JoGWdikj7gfMprgOAks9q4Po9WY4GJbDNyMnhWI+IYkYJyFTxqXZLTwu/k64GS6iDfysnfTtz4KrrykyBm/ZBo5dbbM1qRQnM4HpF//pvl7sAlm1vn2OmeFZ0ntAOayrSZJea90H4x3EFmTQSMQafa2vSENdMEZOt4nf9HNBkPzPbVLOt10NGsOn/gQra3dpunIRSzIkL7dVyJ70rsvRP9O5OmHjHxC6Q+F+PetyasWmnsG5bcf5vJ0MeSFPjixwe3oT2kkfC4tY9Gmz9s5a+iEuEFacG25fqy/fLuzJSTubLzFd+WQZtmCW232Yq5At9e/SObPZzoG1vuhHMHh0NvwaQR/W59UnIWjoQM099zMYW+kRfVtnJYg6idWhv8d+oQ95xXZZItinADXqBsETjetnj2M0nwObdr3I8bGKYheilmpkJCbowITd0x7myYvwFGA704D0B/EFq2ISAGPwyUfwzIwsOYfHWf8pYOy8B6NdQTNhIiIdvHnVGShjb2b96fnhOmGuUmR0WICavMe+NAkY8ek9cx7fAyzntHo6GrFt4qAvFLbVDev9Wz2URwhl7SxzGcfEWzLwlsiv1p9OLIduohDwJ3tHOD70lHloItYBQhewm5rPxHGcNROu8ji/1xE0uRYkuuA/04T1KYxoMIdZW8cDzeta3zdT9nWQaXDmjwKQGQ7oXt0r70ecnFEXRL7HwAOBpa6xg+M746ePVmtB9g==
 
-# â”€â”€ Backend (Node.js) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Backend (Node.js) ---------------------------------------------------------
 backend:
-  # PinnÃ©e par la CI (branche develop)
+  # Pinnee par la CI (branche develop)
   image: ghcr.io/emmguardia/zenix-app-back@sha256:cabc787f33788a9ce538a3f88d0b99937bdf6665dec062c60b4044df5710cd8d
   imagePullPolicy: Always
   replicas: 1
@@ -69,7 +67,7 @@ backend:
   hpa:
     enabled: false   # Pas d'HPA en dev
 
-# â”€â”€ Frontend (nginx unprivileged) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# -- Frontend (nginx unprivileged) ----------------------------------------------
 frontend:
   image: ghcr.io/emmguardia/zenix-app-front@sha256:e3f233d4e3f0afd3da5de986c3d20ad308952044fada46dae3bf5f71361c83ff
   imagePullPolicy: Always
