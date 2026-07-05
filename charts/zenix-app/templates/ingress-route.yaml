@@ -1,0 +1,22 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: zenix-app-ingress
+  namespace: {{ include "zenix-app.namespace" . }}
+  labels:
+    {{- include "zenix-app.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    {{- toYaml .Values.ingress.entryPoints | nindent 4 }}
+  routes:
+    - match: "Host(`{{ .Values.hostname }}`)"
+      kind: Rule
+      services:
+        - name: zenix-app-frontend
+          port: {{ .Values.frontend.port }}
+      middlewares:
+        - name: security-headers
+        {{- if .Values.ingress.crowdsec }}
+        - name: crowdsec-bouncer
+          namespace: kube-system
+        {{- end }}

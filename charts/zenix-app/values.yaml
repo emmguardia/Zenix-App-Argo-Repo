@@ -1,0 +1,74 @@
+# Zenix App — Espace Client (PROD, namespace zenix-app, branche main)
+# Les images sont pinnées par digest par la CI (build-and-push.yml)
+
+namespace: zenix-app
+hostname: app.zenixweb.fr
+
+imagePullSecrets:
+  - name: ghcr-secret
+
+ingress:
+  entryPoints:
+    - web
+  crowdsec: true
+
+# ── Backend (Node.js) ─────────────────────────────────────────────────────────
+backend:
+  # Pinnée par la CI après le premier build
+  image: ghcr.io/emmguardia/zenix-app-back:latest
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  port: 3000
+  secretName: zenix-app-secrets
+  env:
+    PORT: "3000"
+    NODE_ENV: production
+    APP_URL: https://app.zenixweb.fr
+    FRONTEND_URL: https://app.zenixweb.fr
+    ADMIN_GROUP: GRP Admins
+    # IDs des Prices Stripe (Dashboard → Produits) — pas des secrets
+    STRIPE_PRICE_START: ""
+    STRIPE_PRICE_RELAX: ""
+    STRIPE_PRICE_PRO: ""
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "300m"
+      memory: "384Mi"
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    cpuTarget: 70
+    memoryTarget: 80
+
+# ── Frontend (nginx unprivileged) ─────────────────────────────────────────────
+frontend:
+  # Pinnée par la CI après le premier build
+  image: ghcr.io/emmguardia/zenix-app-front:latest
+  imagePullPolicy: IfNotPresent
+  replicas: 1
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  port: 8080
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+  hpa:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 4
+    cpuTarget: 70
+    memoryTarget: 80

@@ -1,0 +1,158 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zenix-app-backend
+  namespace: {{ include "zenix-app.namespace" . }}
+  labels:
+    {{- include "zenix-app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.backend.replicas }}
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.backend.strategy.rollingUpdate.maxSurge | default 1 }}
+      maxUnavailable: {{ .Values.backend.strategy.rollingUpdate.maxUnavailable | default 0 }}
+  selector:
+    matchLabels:
+      app: zenix-app-backend
+  template:
+    metadata:
+      labels:
+        app: zenix-app-backend
+    spec:
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: backend
+        image: {{ .Values.backend.image }}
+        imagePullPolicy: {{ .Values.backend.imagePullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          capabilities:
+            drop:
+            - ALL
+        ports:
+        - containerPort: {{ .Values.backend.port }}
+        env:
+        - name: PORT
+          value: {{ .Values.backend.env.PORT | quote }}
+        - name: NODE_ENV
+          value: {{ .Values.backend.env.NODE_ENV | quote }}
+        - name: APP_URL
+          value: {{ .Values.backend.env.APP_URL | quote }}
+        - name: FRONTEND_URL
+          value: {{ .Values.backend.env.FRONTEND_URL | quote }}
+        - name: ADMIN_GROUP
+          value: {{ .Values.backend.env.ADMIN_GROUP | quote }}
+        - name: STRIPE_PRICE_START
+          value: {{ .Values.backend.env.STRIPE_PRICE_START | quote }}
+        - name: STRIPE_PRICE_RELAX
+          value: {{ .Values.backend.env.STRIPE_PRICE_RELAX | quote }}
+        - name: STRIPE_PRICE_PRO
+          value: {{ .Values.backend.env.STRIPE_PRICE_PRO | quote }}
+        - name: DB_HOST
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: db-host
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: db-user
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: db-password
+        - name: DB_NAME
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: db-name
+        - name: OIDC_ISSUER_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: oidc-issuer-url
+        - name: OIDC_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: oidc-client-id
+        - name: OIDC_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: oidc-client-secret
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: session-secret
+        - name: STRIPE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: stripe-secret-key
+        - name: STRIPE_WEBHOOK_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: stripe-webhook-secret
+        - name: R2_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: r2-endpoint
+        - name: R2_ACCESS_KEY_ID
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: r2-access-key-id
+        - name: R2_SECRET_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: r2-secret-access-key
+        - name: R2_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: r2-bucket
+        - name: DISCORD_WEBHOOK_URL
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: discord-webhook-url
+        resources:
+          {{- toYaml .Values.backend.resources | nindent 10 }}
+        startupProbe:
+          httpGet:
+            path: /api/health
+            port: {{ .Values.backend.port }}
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 10
+          failureThreshold: 24
+        livenessProbe:
+          httpGet:
+            path: /api/health
+            port: {{ .Values.backend.port }}
+          periodSeconds: 15
+          timeoutSeconds: 10
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /api/health
+            port: {{ .Values.backend.port }}
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 6

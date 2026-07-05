@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zenix-app-frontend
+  namespace: {{ include "zenix-app.namespace" . }}
+  labels:
+    {{- include "zenix-app.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.frontend.replicas }}
+  revisionHistoryLimit: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ .Values.frontend.strategy.rollingUpdate.maxSurge | default 1 }}
+      maxUnavailable: {{ .Values.frontend.strategy.rollingUpdate.maxUnavailable | default 0 }}
+  selector:
+    matchLabels:
+      app: zenix-app-frontend
+  template:
+    metadata:
+      labels:
+        app: zenix-app-frontend
+    spec:
+      imagePullSecrets:
+        {{- toYaml .Values.imagePullSecrets | nindent 8 }}
+      securityContext:
+        runAsNonRoot: true
+      containers:
+      - name: frontend
+        image: {{ .Values.frontend.image }}
+        imagePullPolicy: {{ .Values.frontend.imagePullPolicy }}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        ports:
+        - containerPort: {{ .Values.frontend.port }}
+        resources:
+          {{- toYaml .Values.frontend.resources | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ .Values.frontend.port }}
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 5
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: {{ .Values.frontend.port }}
+          initialDelaySeconds: 3
+          periodSeconds: 10
+          timeoutSeconds: 5
