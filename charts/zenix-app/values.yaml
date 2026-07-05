@@ -30,10 +30,12 @@ backend:
     APP_URL: https://app.zenixweb.fr
     FRONTEND_URL: https://app.zenixweb.fr
     ADMIN_GROUP: GRP Admins
-    # IDs des Prices Stripe (Dashboard → Produits) — pas des secrets
-    STRIPE_PRICE_START: ""
-    STRIPE_PRICE_RELAX: ""
-    STRIPE_PRICE_PRO: ""
+    # IDs des Prices Stripe (mode test — à remplacer par les live au lancement)
+    STRIPE_PRICE_START: "price_1Tpq762XjKwHiB5JkXxsindK"
+    STRIPE_PRICE_RELAX: "price_1Tpq762XjKwHiB5JBdNkQyDz"
+    STRIPE_PRICE_PRO: "price_1Tpq762XjKwHiB5JHiz1C7GQ"
+    # Clé publique Stripe (pk_test_... — PAS un secret, Dashboard → Clés API)
+    STRIPE_PUBLISHABLE_KEY: ""
   resources:
     requests:
       cpu: "50m"

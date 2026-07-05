@@ -1,9 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, CreditCard, Link2, Plus, Rocket, UserPlus } from 'lucide-react';
-import { api, type AdminOrganization } from '../../api';
-import { Badge, Card, ErrorNote, Modal, ORG_STATUS, PLAN_LABELS, Spinner, useToast } from '../../ui';
+import { BadgeCheck, ChevronDown, ChevronUp, Download, Plus, Trash2, Upload, UserPlus } from 'lucide-react';
+import { api, type AdminDocument, type AdminOrganization, type StripeCustomer } from '../../api';
+import { Badge, Card, ErrorNote, fmtDate, Modal, ORG_STATUS, PLAN_LABELS, Spinner, useToast } from '../../ui';
 
 const inputCls = 'w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none';
+
+const ONBOARDING_LABELS: Record<string, { label: string; cls: string }> = {
+  infos:    { label: 'Attend sa 1ère connexion', cls: 'bg-slate-200 text-slate-600' },
+  plan:     { label: 'Choisit son offre',        cls: 'bg-slate-200 text-slate-600' },
+  review:   { label: '⚠ Infos à valider',        cls: 'bg-amber-100 text-amber-800' },
+  contract: { label: 'Contrat en cours',         cls: 'bg-violet-100 text-violet-700' },
+  payment:  { label: 'Attend son paiement',      cls: 'bg-blue-100 text-blue-700' },
+  done:     { label: '',                         cls: '' },
+};
+
+const DOC_LABELS: Record<string, string> = {
+  contrat: 'Contrat', contrat_signe: 'Contrat SIGNÉ', cgv: 'CGV',
+  devis: 'Devis', zip_offboarding: 'Export', autre: 'Autre',
+};
 
 export default function AdminOrgs() {
   const [orgs, setOrgs] = useState<AdminOrganization[]>([]);
@@ -13,7 +27,6 @@ export default function AdminOrgs() {
   const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(() => {
-    setLoading(true);
     api.get<{ organizations: AdminOrganization[] }>('/admin/orgs')
       .then((r) => setOrgs(r.organizations))
       .catch((e) => setError(e.message))
@@ -25,133 +38,144 @@ export default function AdminOrgs() {
   if (loading) return <Spinner />;
   if (error) return <ErrorNote message={error} />;
 
-  const active = orgs.filter((o) => o.status === 'active').length;
-  const pending = orgs.filter((o) => o.status === 'pending').length;
+  const toReview = orgs.filter((o) => o.onboarding_status === 'review').length;
 
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Clients</h1>
-          <p className="text-sm text-slate-500">
-            {active} actif{active > 1 ? 's' : ''}{pending > 0 && ` · ${pending} en attente d'activation`}
-          </p>
+          {toReview > 0 && <p className="text-sm font-medium text-amber-700">{toReview} inscription{toReview > 1 ? 's' : ''} à valider</p>}
         </div>
         <button
           onClick={() => setShowCreate(true)}
           className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
         >
-          <Plus className="h-4 w-4" /> Nouveau client
+          <Plus className="h-4 w-4" /> Client existant
         </button>
       </div>
 
       <CreateOrgModal open={showCreate} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); load(); }} />
 
       <div className="space-y-3">
-        {orgs.map((org) => (
-          <Card key={org.id} className="!p-5">
-            <button
-              onClick={() => setExpanded(expanded === org.id ? null : org.id)}
-              className="flex w-full items-center justify-between gap-4 text-left"
-            >
-              <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-                <span className="font-bold text-slate-900">{org.name}</span>
-                <Badge {...ORG_STATUS[org.status]} />
-                {org.plan && <span className="text-sm text-slate-500">{PLAN_LABELS[org.plan]}</span>}
-              </div>
-              <div className="flex shrink-0 items-center gap-3 text-sm text-slate-500">
-                <span>{org.balance} crédit{org.balance > 1 ? 's' : ''}</span>
-                {expanded === org.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-              </div>
-            </button>
-            {expanded === org.id && <OrgDetail org={org} onChanged={load} />}
-          </Card>
-        ))}
+        {orgs.map((org) => {
+          const ob = ONBOARDING_LABELS[org.onboarding_status];
+          return (
+            <Card key={org.id} className="!p-5">
+              <button
+                onClick={() => setExpanded(expanded === org.id ? null : org.id)}
+                className="flex w-full items-center justify-between gap-4 text-left"
+              >
+                <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+                  <span className="font-bold text-slate-900">{org.name}</span>
+                  {org.onboarding_status === 'done'
+                    ? <Badge {...ORG_STATUS[org.status]} />
+                    : <Badge {...ob} />}
+                  {org.plan && <span className="text-sm text-slate-500">{PLAN_LABELS[org.plan]}</span>}
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-sm text-slate-500">
+                  <span>{org.balance} crédit{org.balance > 1 ? 's' : ''}</span>
+                  {expanded === org.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </div>
+              </button>
+              {expanded === org.id && <OrgDetail org={org} onChanged={load} />}
+            </Card>
+          );
+        })}
         {orgs.length === 0 && (
-          <Card><p className="py-4 text-center text-sm text-slate-400">Aucun client — crée le premier avec le bouton au-dessus.</p></Card>
+          <Card><p className="py-4 text-center text-sm text-slate-400">
+            Aucun client. Un nouveau client apparaît ici dès sa première connexion — ou ajoute un client Stripe existant.
+          </p></Card>
         )}
       </div>
     </div>
   );
 }
 
+/* ── "Client existant" : liaison d'un customer Stripe historique ──────────── */
 function CreateOrgModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const toast = useToast();
-  const [form, setForm] = useState({ name: '', legal_type: 'entreprise', plan: 'start', siret: '', linked_domain: '' });
+  const [customers, setCustomers] = useState<StripeCustomer[]>([]);
+  const [customerId, setCustomerId] = useState('');
+  const [email, setEmail] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    api.get<{ customers: StripeCustomer[] }>('/admin/stripe/customers')
+      .then((r) => setCustomers(r.customers))
+      .catch((e) => toast(e.message, 'error'));
+  }, [open, toast]);
+
+  const selected = customers.find((c) => c.id === customerId);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selected) return;
     setBusy(true);
     try {
-      await api.post('/admin/orgs', {
-        ...form,
-        siret: form.siret || null,
-        linked_domain: form.linked_domain || null,
+      const { organization } = await api.post<{ organization: { id: string } }>('/admin/orgs', {
+        name: selected.name !== '(sans nom)' ? selected.name : (selected.email || 'Client Stripe'),
+        legal_type: 'entreprise',
       });
-      toast(`Client "${form.name}" créé`);
-      setForm({ name: '', legal_type: 'entreprise', plan: 'start', siret: '', linked_domain: '' });
+      await api.patch(`/admin/orgs/${organization.id}`, { stripe_customer_id: selected.id });
+      if (email) await api.post(`/admin/orgs/${organization.id}/link-user`, { email });
+      toast('Client importé — son abonnement Stripe a été détecté automatiquement s\'il existe');
+      setCustomerId(''); setEmail('');
       onCreated();
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Erreur à la création', 'error');
-    } finally {
-      setBusy(false);
-    }
+      toast(error instanceof Error ? error.message : 'Erreur', 'error');
+    } finally { setBusy(false); }
   };
 
   return (
-    <Modal open={open} title="Nouveau client" onClose={onClose}>
+    <Modal open={open} title="Importer un client Stripe existant" onClose={onClose}>
+      <p className="mb-4 text-sm text-slate-500">
+        Pour un client qui te paie déjà : choisis-le dans ta liste Stripe, son abonnement
+        et sa formule seront détectés automatiquement. Les nouveaux clients, eux, n'ont
+        pas besoin de ça : tout se fait à leur première connexion.
+      </p>
       <form onSubmit={submit} className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Nom (entreprise ou personne)</label>
-          <input className={inputCls} placeholder="Ex. : Boulangerie Martin" required value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Type</label>
-            <select className={inputCls} value={form.legal_type}
-              onChange={(e) => setForm({ ...form, legal_type: e.target.value })}>
-              <option value="entreprise">Entreprise</option>
-              <option value="association">Association</option>
-              <option value="particulier">Particulier</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-slate-500">Formule</label>
-            <select className={inputCls} value={form.plan}
-              onChange={(e) => setForm({ ...form, plan: e.target.value })}>
-              <option value="start">Zenix Start</option>
-              <option value="relax">Zenix Relax</option>
-              <option value="pro">Zenix Pro</option>
-            </select>
-          </div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Client Stripe</label>
+          <select className={inputCls} required value={customerId} onChange={(e) => setCustomerId(e.target.value)}>
+            <option value="">— Choisir dans Stripe —</option>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id} disabled={!!c.linkedTo}>
+                {c.name}{c.email ? ` · ${c.email}` : ''}{c.linkedTo ? ` (déjà lié à ${c.linkedTo})` : ''}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">Domaine du site (optionnel)</label>
-          <input className={inputCls} placeholder="monsite.fr" value={form.linked_domain}
-            onChange={(e) => setForm({ ...form, linked_domain: e.target.value })} />
+          <label className="mb-1 block text-xs font-medium text-slate-500">Email de son compte Authentik (optionnel, liable plus tard)</label>
+          <input className={inputCls} type="email" placeholder="email@client.fr" value={email}
+            onChange={(e) => setEmail(e.target.value)} />
         </div>
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-500">SIRET (optionnel)</label>
-          <input className={inputCls} placeholder="123 456 789 00012" value={form.siret}
-            onChange={(e) => setForm({ ...form, siret: e.target.value.replace(/\s/g, '') })} />
-        </div>
-        <button type="submit" disabled={busy}
+        <button type="submit" disabled={busy || !customerId}
           className="w-full rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-          {busy ? 'Création…' : 'Créer le client'}
+          {busy ? 'Import…' : 'Importer ce client'}
         </button>
       </form>
     </Modal>
   );
 }
 
+/* ── Détail d'un client ────────────────────────────────────────────────── */
 function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () => void }) {
   const toast = useToast();
   const [email, setEmail] = useState('');
-  const [stripeId, setStripeId] = useState(org.stripe_customer_id ?? '');
   const [busy, setBusy] = useState(false);
-  const [confirmActivate, setConfirmActivate] = useState(false);
+  const [documents, setDocuments] = useState<AdminDocument[] | null>(null);
+  const [docType, setDocType] = useState('contrat');
+
+  const loadDocs = useCallback(() => {
+    api.get<{ documents: AdminDocument[] }>(`/admin/orgs/${org.id}/documents`)
+      .then((r) => setDocuments(r.documents))
+      .catch(() => setDocuments([]));
+  }, [org.id]);
+
+  useEffect(loadDocs, [loadDocs]);
 
   const run = async (fn: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -159,31 +183,48 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
       await fn();
       toast(success);
       onChanged();
+      loadDocs();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erreur', 'error');
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   };
 
-  const readyToActivate = org.stripe_customer_id && org.plan && !org.stripe_subscription_id;
-
   return (
-    <div className="mt-4 space-y-4 border-t border-slate-100 pt-4">
-      {/* 1. Accès client */}
-      <section>
-        <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">1 · Accès client</h4>
-        <p className="mb-2 text-sm text-slate-500">
-          {org.members
-            ? <>Connecté{org.members.includes(',') ? 's' : ''} : <span className="font-medium text-slate-700">{org.members}</span></>
-            : 'Aucun compte lié — entre l\'email du compte Authentik du client :'}
+    <div className="mt-4 space-y-5 border-t border-slate-100 pt-4">
+      {/* Infos remplies par le client */}
+      <section className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+        <p className="text-slate-500">Contact : <span className="font-medium text-slate-800">
+          {org.contact_first_name ? `${org.contact_first_name} ${org.contact_last_name}` : '—'}</span></p>
+        <p className="text-slate-500">Téléphone : <span className="font-medium text-slate-800">{org.contact_phone ?? '—'}</span></p>
+        <p className="text-slate-500">SIRET : <span className="font-medium text-slate-800">{org.siret ?? '—'}</span></p>
+        <p className="text-slate-500">Adresse : <span className="font-medium text-slate-800">{org.billing_address ?? '—'}</span></p>
+        <p className="text-slate-500">Compte(s) : <span className="font-medium text-slate-800">{org.members ?? 'aucun'}</span></p>
+        <p className="text-slate-500">Stripe : <span className="font-mono text-xs text-slate-700">{org.stripe_customer_id ?? '—'}</span></p>
+      </section>
+
+      {/* Validation des infos (étape review) */}
+      {org.onboarding_status === 'review' && (
+        <button disabled={busy}
+          onClick={() => run(() => api.post(`/admin/orgs/${org.id}/validate`), 'Infos validées — dépose maintenant son contrat ci-dessous')}
+          className="flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-50">
+          <BadgeCheck className="h-4 w-4" /> Valider ses informations
+        </button>
+      )}
+      {org.onboarding_status === 'contract' && !documents?.some((d) => d.type === 'contrat') && (
+        <p className="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-700">
+          ⏳ Le client attend son contrat : dépose-le ci-dessous (type "Contrat"), il pourra le signer et le redéposer.
         </p>
+      )}
+
+      {/* Lier un compte Authentik */}
+      <section>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Lier un compte de connexion</h4>
         <div className="flex gap-2">
           <input className={inputCls} placeholder="email@client.fr" type="email" value={email}
             onChange={(e) => setEmail(e.target.value)} />
           <button
             disabled={busy || !email}
-            onClick={() => run(() => api.post(`/admin/orgs/${org.id}/link-user`, { email }).then(() => setEmail('')), 'Compte client lié')}
+            onClick={() => run(() => api.post(`/admin/orgs/${org.id}/link-user`, { email }).then(() => setEmail('')), 'Compte lié')}
             className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
           >
             <UserPlus className="h-4 w-4" /> Lier
@@ -191,78 +232,64 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
         </div>
       </section>
 
-      {/* 2. Stripe */}
+      {/* Documents */}
       <section>
-        <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">2 · Facturation Stripe</h4>
-        <p className="mb-2 text-sm text-slate-500">
-          {org.stripe_subscription_id
-            ? <>Abonnement actif : <span className="font-mono text-xs text-slate-700">{org.stripe_subscription_id}</span></>
-            : org.stripe_customer_id
-              ? <>Customer lié : <span className="font-mono text-xs text-slate-700">{org.stripe_customer_id}</span></>
-              : 'Colle l\'ID du customer Stripe (Dashboard Stripe → Clients) :'}
-        </p>
-        {!org.stripe_subscription_id && (
-          <div className="flex gap-2">
-            <input className={inputCls} placeholder="cus_..." value={stripeId}
-              onChange={(e) => setStripeId(e.target.value.trim())} />
-            <button
-              disabled={busy || !stripeId}
-              onClick={() => run(() => api.patch(`/admin/orgs/${org.id}`, { stripe_customer_id: stripeId }), 'Customer Stripe lié')}
-              className="flex shrink-0 items-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-            >
-              <Link2 className="h-4 w-4" /> Lier
-            </button>
-          </div>
+        <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Documents</h4>
+        {documents === null ? <Spinner /> : (
+          <>
+            {documents.length > 0 && (
+              <ul className="mb-3 divide-y divide-slate-100 rounded-xl border border-slate-200">
+                {documents.map((d) => (
+                  <li key={d.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-800">
+                        <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                          d.type === 'contrat_signe' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        }`}>{DOC_LABELS[d.type] ?? d.type}</span>
+                        {d.filename}
+                      </p>
+                      <p className="text-xs text-slate-400">{fmtDate(d.created_at)}{d.uploaded_by_name ? ` · par ${d.uploaded_by_name}` : ''}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button title="Télécharger"
+                        onClick={async () => {
+                          const { url } = await api.get<{ url: string }>(`/admin/orgs/${org.id}/documents/${d.id}/download`);
+                          window.open(url, '_blank', 'noreferrer');
+                        }}
+                        className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
+                        <Download className="h-4 w-4" />
+                      </button>
+                      <button title="Supprimer" disabled={busy}
+                        onClick={() => run(() => api.delete(`/admin/orgs/${org.id}/documents/${d.id}`), 'Document supprimé')}
+                        className="rounded-lg p-2 text-red-400 hover:bg-red-50">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <select className={`${inputCls} !w-auto`} value={docType} onChange={(e) => setDocType(e.target.value)}>
+                <option value="contrat">Contrat</option>
+                <option value="cgv">CGV</option>
+                <option value="devis">Devis</option>
+                <option value="zip_offboarding">Export fin de contrat</option>
+                <option value="autre">Autre</option>
+              </select>
+              <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 ${busy ? 'opacity-50' : ''}`}>
+                <Upload className="h-4 w-4" /> Déposer un fichier (PDF/ZIP)
+                <input type="file" accept="application/pdf,application/zip" className="hidden" disabled={busy}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) run(() => api.upload(`/admin/orgs/${org.id}/documents`, file, { type: docType }), 'Document déposé');
+                    e.target.value = '';
+                  }} />
+              </label>
+            </div>
+          </>
         )}
       </section>
-
-      {/* 3. Activation */}
-      {!org.stripe_subscription_id && (
-        <section>
-          <h4 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">3 · Activation</h4>
-          {!readyToActivate && (
-            <p className="mb-2 text-sm text-amber-700">
-              Avant d'activer : lie un customer Stripe{!org.plan && ' et choisis une formule'}.
-            </p>
-          )}
-          <button
-            disabled={busy || !readyToActivate}
-            onClick={() => setConfirmActivate(true)}
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
-          >
-            <Rocket className="h-4 w-4" /> Activer le projet & le prélèvement
-          </button>
-        </section>
-      )}
-
-      <Modal open={confirmActivate} title={`Activer ${org.name} ?`} onClose={() => setConfirmActivate(false)}>
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
-            <CreditCard className="mt-0.5 h-5 w-5 shrink-0" />
-            <p>
-              Cette action déclenche <strong>immédiatement le premier prélèvement</strong> sur la
-              carte du client et fixe la date anniversaire des prélèvements suivants.
-              Le site doit être en ligne.
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setConfirmActivate(false)}
-              className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50">
-              Annuler
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => {
-                setConfirmActivate(false);
-                run(() => api.post(`/admin/orgs/${org.id}/activate`), `${org.name} activé — premier prélèvement lancé 🚀`);
-              }}
-              className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
-            >
-              Oui, activer
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { Card, ErrorNote, fmtDate, Spinner, useToast } from '../ui';
 
 const DOC_TYPES: Record<string, string> = {
   contrat:          'Contrat',
+  contrat_signe:    'Contrat signé',
+  cgv:              'Conditions Générales de Vente',
   devis:            'Devis',
   zip_offboarding:  'Export de vos fichiers',
   autre:            'Document',

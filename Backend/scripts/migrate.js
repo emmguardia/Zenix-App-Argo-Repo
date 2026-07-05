@@ -1,16 +1,16 @@
 /**
  * node scripts/migrate.js
- * Applique migrate.sql sur la base définie par les variables d'env.
+ * Applique tous les scripts/migrate*.sql (triés) sur la base des variables d'env.
  */
 import 'dotenv/config';
 import mysql from 'mysql2/promise';
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const sql = readFileSync(join(__dirname, 'migrate.sql'), 'utf8');
+const files = readdirSync(__dirname).filter((f) => /^migrate.*\.sql$/.test(f)).sort();
 
 const conn = await mysql.createConnection({
   host:     process.env.DB_HOST,
@@ -21,8 +21,10 @@ const conn = await mysql.createConnection({
 });
 
 try {
-  console.log('[migrate] Application du schéma...');
-  await conn.query(sql);
+  for (const file of files) {
+    console.log(`[migrate] ${file}...`);
+    await conn.query(readFileSync(join(__dirname, file), 'utf8'));
+  }
   console.log('[migrate] ✓ Terminé');
 } finally {
   await conn.end();

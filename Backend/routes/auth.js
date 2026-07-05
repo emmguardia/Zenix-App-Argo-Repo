@@ -84,16 +84,14 @@ router.get('/callback', authLimiter, async (req, res) => {
           'UPDATE users SET authentik_sub = ?, name = COALESCE(NULLIF(name, \'\'), ?) WHERE id = ?',
           [claims.sub, claims.name || claims.preferred_username || '', user.id]
         );
-      } else if (isAdmin) {
-        // L'admin n'a pas besoin de fiche pré-créée
-        user = { id: randomUUID(), email, name: claims.name || 'Admin' };
+      } else {
+        // Auto-provision : le compte Authentik est créé par Enzo, c'est lui le contrôle
+        // d'accès. Le client passera par l'onboarding (infos, offre...) au premier login.
+        user = { id: randomUUID(), email, name: claims.name || '' };
         await pool.execute(
           'INSERT INTO users (id, authentik_sub, email, name) VALUES (?, ?, ?, ?)',
           [user.id, claims.sub, email, user.name]
         );
-      } else {
-        // Client inconnu : compte Authentik OK mais pas de fiche → accès refusé
-        return res.redirect(`${FRONTEND_URL}/?error=compte-non-provisionne`);
       }
     }
 

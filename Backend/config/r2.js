@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 let client = null;
@@ -41,4 +41,18 @@ export async function signedUploadUrl(r2Key, contentType) {
     ContentType: contentType,
   });
   return getSignedUrl(getR2(), cmd, { expiresIn: 300 });
+}
+
+/** Upload direct depuis le backend (fichiers reçus en multipart). */
+export async function putObject(r2Key, buffer, contentType) {
+  await getR2().send(new PutObjectCommand({
+    Bucket:      BUCKET(),
+    Key:         r2Key,
+    Body:        buffer,
+    ContentType: contentType,
+  }));
+}
+
+export async function deleteObject(r2Key) {
+  await getR2().send(new DeleteObjectCommand({ Bucket: BUCKET(), Key: r2Key }));
 }

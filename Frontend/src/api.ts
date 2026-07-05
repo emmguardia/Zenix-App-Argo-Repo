@@ -21,6 +21,44 @@ export interface AdminOrganization extends Organization {
   balance: number;
   members: string | null;
   created_at: string;
+  onboarding_status: 'infos' | 'plan' | 'review' | 'contract' | 'payment' | 'done';
+  contact_first_name: string | null;
+  contact_last_name: string | null;
+  contact_phone: string | null;
+  validated_at: string | null;
+}
+
+export interface OnboardingState {
+  step: 'infos' | 'plan' | 'review' | 'contract' | 'payment' | 'done';
+  organization: {
+    id: string; name: string; plan: string | null; status: string;
+    contact_first_name: string | null; contact_last_name: string | null;
+    cgv_accepted_at: string | null;
+  } | null;
+}
+
+export interface StripeCustomer {
+  id: string;
+  name: string;
+  email: string;
+  linkedTo: string | null;
+}
+
+export interface AdminStats {
+  mrr: number;
+  activeSubs: number;
+  monthlyRevenue: { month: string; amount: number }[];
+  byPlan: { plan: string; count: number }[];
+  statuses: { status: string; count: number }[];
+  pendingTickets: number;
+}
+
+export interface AdminDocument {
+  id: string;
+  type: string;
+  filename: string;
+  created_at: string;
+  uploaded_by_name: string | null;
 }
 
 export interface Me {
@@ -100,4 +138,17 @@ export const api = {
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
+  /** Upload multipart (le Content-Type est posé par le navigateur) */
+  upload: async <T>(path: string, file: File, fields: Record<string, string> = {}): Promise<T> => {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    form.append('file', file);
+    const res = await fetch(`/api${path}`, { method: 'POST', credentials: 'include', body: form });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new ApiError(res.status, body.error || `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<T>;
+  },
 };

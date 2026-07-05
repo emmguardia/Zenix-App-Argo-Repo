@@ -62,6 +62,8 @@ spec:
           value: {{ .Values.backend.env.STRIPE_PRICE_RELAX | quote }}
         - name: STRIPE_PRICE_PRO
           value: {{ .Values.backend.env.STRIPE_PRICE_PRO | quote }}
+        - name: STRIPE_PUBLISHABLE_KEY
+          value: {{ .Values.backend.env.STRIPE_PUBLISHABLE_KEY | quote }}
         - name: DB_HOST
           valueFrom:
             secretKeyRef:

@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../config/database.js';
-import { getStripe, PLAN_PRICES } from '../../config/stripe.js';
+import { getStripe, PLAN_PRICES, priceToPlan } from '../../config/stripe.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
+import { putObject, deleteObject, signedDownloadUrl } from '../../config/r2.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -69,8 +71,113 @@ router.patch('/:id', async (req, res) => {
   );
   if (!result.affectedRows) return res.status(404).json({ error: 'Organisation introuvable' });
 
+  // Liaison d'un customer Stripe : détecte son abonnement actif éventuel
+  // (client historique) → statut actif + plan + onboarding raccourci
+  if (parsed.data.stripe_customer_id) {
+    try {
+      const subs = await getStripe().subscriptions.list({
+        customer: parsed.data.stripe_customer_id, status: 'active', limit: 1,
+      });
+      const sub = subs.data[0];
+      if (sub) {
+        const plan = priceToPlan(sub.items.data[0]?.price?.id);
+        await getPool().execute(
+          `UPDATE organizations SET stripe_subscription_id = ?, status = 'active',
+             plan = COALESCE(?, plan) WHERE id = ?`,
+          [sub.id, plan, req.params.id]
+        );
+      }
+    } catch (e) {
+      console.warn('[admin] détection abonnement:', e.message);
+    }
+  }
+
   await audit('admin', req.user.uid, 'org.update', 'organization', req.params.id, parsed.data);
   res.json({ updated: true });
+});
+
+/* ── POST /api/admin/orgs/:id/validate — OK humain sur les infos client ────
+ * review → contract : Enzo confirme que les infos ne sont pas bidon. */
+router.post('/:id/validate', async (req, res) => {
+  const [result] = await getPool().execute(
+    `UPDATE organizations SET onboarding_status = 'contract', validated_at = NOW()
+     WHERE id = ? AND onboarding_status = 'review'`,
+    [req.params.id]
+  );
+  if (!result.affectedRows) return res.status(409).json({ error: 'Ce client n\'est pas en attente de validation' });
+
+  await audit('admin', req.user.uid, 'org.validate', 'organization', req.params.id);
+  res.json({ validated: true, next: 'Dépose le contrat d\'hébergement dans ses documents' });
+});
+
+/* ═══ Documents (dépôt / suppression / téléchargement) ════════════════════ */
+
+const uploadDoc = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, ['application/pdf', 'application/zip'].includes(file.mimetype)),
+});
+
+const DOC_TYPES = ['contrat', 'cgv', 'devis', 'zip_offboarding', 'autre'];
+
+/* ── GET /api/admin/orgs/:id/documents ─────────────────────────────────── */
+router.get('/:id/documents', async (req, res) => {
+  const [documents] = await getPool().execute(
+    `SELECT d.id, d.type, d.filename, d.created_at, u.name AS uploaded_by_name
+     FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by
+     WHERE d.organization_id = ? ORDER BY d.created_at DESC`,
+    [req.params.id]
+  );
+  res.json({ documents });
+});
+
+/* ── POST /api/admin/orgs/:id/documents — dépôt (PDF/ZIP, 15 Mo) ────────── */
+router.post('/:id/documents', uploadDoc.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Fichier PDF ou ZIP requis (15 Mo max)' });
+  const type = DOC_TYPES.includes(req.body.type) ? req.body.type : 'autre';
+
+  const [orgs] = await getPool().execute('SELECT * FROM organizations WHERE id = ? LIMIT 1', [req.params.id]);
+  const org = orgs[0];
+  if (!org) return res.status(404).json({ error: 'Organisation introuvable' });
+
+  const docId = randomUUID();
+  const ext = req.file.mimetype === 'application/zip' ? 'zip' : 'pdf';
+  const r2Key = `orgs/${org.id}/${type}-${docId}.${ext}`;
+  await putObject(r2Key, req.file.buffer, req.file.mimetype);
+  await getPool().execute(
+    `INSERT INTO documents (id, organization_id, type, r2_key, filename, uploaded_by)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [docId, org.id, type, r2Key, req.file.originalname, req.user.uid]
+  );
+
+  // Contrat déposé pendant l'étape contrat → le client est prévenu côté UI
+  await audit('admin', req.user.uid, 'document.upload', 'document', docId, { org: org.name, type });
+  res.status(201).json({ id: docId });
+});
+
+/* ── DELETE /api/admin/orgs/:id/documents/:docId ───────────────────────── */
+router.delete('/:id/documents/:docId', async (req, res) => {
+  const [rows] = await getPool().execute(
+    'SELECT id, r2_key FROM documents WHERE id = ? AND organization_id = ? LIMIT 1',
+    [req.params.docId, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Document introuvable' });
+
+  try { await deleteObject(rows[0].r2_key); } catch (e) { console.warn('[admin] suppression R2:', e.message); }
+  await getPool().execute('DELETE FROM documents WHERE id = ?', [rows[0].id]);
+  await audit('admin', req.user.uid, 'document.delete', 'document', rows[0].id);
+  res.json({ deleted: true });
+});
+
+/* ── GET /api/admin/orgs/:id/documents/:docId/download ─────────────────── */
+router.get('/:id/documents/:docId/download', async (req, res) => {
+  const [rows] = await getPool().execute(
+    'SELECT id, r2_key, filename FROM documents WHERE id = ? AND organization_id = ? LIMIT 1',
+    [req.params.docId, req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Document introuvable' });
+  const url = await signedDownloadUrl(rows[0].r2_key, rows[0].filename);
+  res.json({ url, expiresIn: 300 });
 });
 
 const linkUserSchema = z.object({

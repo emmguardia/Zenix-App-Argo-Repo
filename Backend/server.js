@@ -3,10 +3,12 @@ import express from 'express';
 import cookieParser from 'cookie-parser';
 import { applySecurityMiddleware } from './config/security.js';
 import authRouter from './routes/auth.js';
+import onboardingRouter from './routes/onboarding.js';
 import orgsRouter from './routes/orgs.js';
 import stripeWebhookRouter from './routes/stripe-webhook.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import adminTicketsRouter from './routes/admin/tickets.js';
+import adminStripeRouter from './routes/admin/stripe.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -28,11 +30,13 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter);
 
 /* ── Espace client ─────────────────────────────────────────────────────── */
+app.use('/api/onboarding', onboardingRouter);
 app.use('/api/orgs', orgsRouter);
 
 /* ── Admin ─────────────────────────────────────────────────────────────── */
 app.use('/api/admin/orgs',    adminOrgsRouter);
 app.use('/api/admin/tickets', adminTicketsRouter);
+app.use('/api/admin/stripe',  adminStripeRouter);
 
 /* ── 404 ───────────────────────────────────────────────────────────────── */
 app.use((_req, res) => {
