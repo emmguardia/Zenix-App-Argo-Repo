@@ -26,7 +26,7 @@ sealedSecretDev:
 # ── Backend (Node.js) ─────────────────────────────────────────────────────────
 backend:
   # Pinnée par la CI (branche develop)
-  image: ghcr.io/emmguardia/zenix-app-back:dev
+  image: ghcr.io/emmguardia/zenix-app-back@sha256:a29196be348166c639b85cc1d43b7d369170b8710a37e1c81c974f3e83bcd2eb
   imagePullPolicy: Always
   replicas: 1
   strategy:
@@ -56,7 +56,7 @@ backend:
 
 # ── Frontend (nginx unprivileged) ─────────────────────────────────────────────
 frontend:
-  image: ghcr.io/emmguardia/zenix-app-front:dev
+  image: ghcr.io/emmguardia/zenix-app-front@sha256:071c586e9b593cc9f7e203e366f8c686a688a9d404fd4de7e176096c361146e3
   imagePullPolicy: Always
   replicas: 1
   strategy:
