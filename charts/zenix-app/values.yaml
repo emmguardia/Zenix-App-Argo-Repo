@@ -34,6 +34,12 @@ backend:
     STRIPE_PRICE_START: "price_1Tpq762XjKwHiB5JkXxsindK"
     STRIPE_PRICE_RELAX: "price_1Tpq762XjKwHiB5JBdNkQyDz"
     STRIPE_PRICE_PRO: "price_1Tpq762XjKwHiB5JHiz1C7GQ"
+    # Grille Asso (tarifs réduits)
+    STRIPE_PRICE_START_ASSO: "price_1TpwJ12XjKwHiB5JZ8jR02UV"
+    STRIPE_PRICE_RELAX_ASSO: "price_1TpwJ12XjKwHiB5JQOhL2pRz"
+    STRIPE_PRICE_PRO_ASSO: "price_1TpwJ22XjKwHiB5JEIjnFgSc"
+    # Coupon 100% "une fois" appliqué automatiquement au 11e paiement (engagement 1 an)
+    STRIPE_COUPON_FREE_MONTH: "zenix-12e-mois-offert"
     # Clé publique Stripe (pk_test_... — PAS un secret, Dashboard → Clés API)
     STRIPE_PUBLISHABLE_KEY: "pk_test_51RGyw32XjKwHiB5J1a4wvTeBhIrgbiyPQUdLJtV4ZMdwh1VdIJMJcgv4UT2roHeixiHxaEdFCxt4XfvcJsJtTWSh00GQTr1ooF"
   resources:

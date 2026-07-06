@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getPool } from '../../config/database.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { refundCredit, createGrant } from '../../utils/credits.js';
+import { signedDownloadUrl } from '../../config/r2.js';
 import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
 
@@ -11,11 +12,12 @@ router.use(requireAdmin);
 
 /* ── GET /api/admin/tickets?status=en_attente — boîte de réception ─────── */
 router.get('/', async (req, res) => {
-  const status = ['en_attente', 'valide', 'refuse', 'reporte', 'termine'].includes(req.query.status)
+  const status = ['en_attente', 'valide', 'refuse', 'reporte', 'a_confirmer', 'annule', 'termine'].includes(req.query.status)
     ? req.query.status : null;
 
   const [tickets] = await getPool().execute(
-    `SELECT t.*, o.name AS org_name, u.name AS created_by_name, u.email AS created_by_email
+    `SELECT t.*, o.name AS org_name, u.name AS created_by_name, u.email AS created_by_email,
+            (SELECT COUNT(*) FROM ticket_attachments a WHERE a.ticket_id = t.id) AS attachments
      FROM tickets t
      JOIN organizations o ON o.id = t.organization_id
      LEFT JOIN users u ON u.id = t.created_by
@@ -24,6 +26,17 @@ router.get('/', async (req, res) => {
     status ? [status] : []
   );
   res.json({ tickets });
+});
+
+/* ── GET /api/admin/tickets/:id/attachment — URL signée ────────────────── */
+router.get('/:id/attachment', async (req, res) => {
+  const [rows] = await getPool().execute(
+    'SELECT r2_key, filename FROM ticket_attachments WHERE ticket_id = ? LIMIT 1',
+    [req.params.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Pièce jointe introuvable' });
+  const url = await signedDownloadUrl(rows[0].r2_key, rows[0].filename);
+  res.json({ url, expiresIn: 300 });
 });
 
 const decisionSchema = z.object({

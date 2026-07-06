@@ -29,20 +29,24 @@ export const ORG_STATUS: Record<string, { label: string; cls: string }> = {
 
 // Statuts de demande vus par le CLIENT
 export const TICKET_STATUS: Record<string, { label: string; cls: string; dot: string }> = {
-  en_attente: { label: 'Reçue',                    cls: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-500' },
-  valide:     { label: 'En cours de réalisation',  cls: 'bg-amber-100 text-amber-800',     dot: 'bg-amber-500' },
-  reporte:    { label: 'Prévue le mois prochain',  cls: 'bg-violet-100 text-violet-700',   dot: 'bg-violet-500' },
-  refuse:     { label: 'Non retenue',              cls: 'bg-slate-200 text-slate-600',     dot: 'bg-slate-400' },
-  termine:    { label: 'Terminée',                 cls: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-500' },
+  en_attente:  { label: 'Reçue',                    cls: 'bg-blue-100 text-blue-700',       dot: 'bg-blue-500' },
+  valide:      { label: 'En cours de réalisation',  cls: 'bg-amber-100 text-amber-800',     dot: 'bg-amber-500' },
+  reporte:     { label: 'Prévue le mois prochain',  cls: 'bg-violet-100 text-violet-700',   dot: 'bg-violet-500' },
+  a_confirmer: { label: 'À reconfirmer',            cls: 'bg-orange-100 text-orange-700',   dot: 'bg-orange-500' },
+  refuse:      { label: 'Non retenue',              cls: 'bg-slate-200 text-slate-600',     dot: 'bg-slate-400' },
+  annule:      { label: 'Annulée',                  cls: 'bg-slate-200 text-slate-600',     dot: 'bg-slate-400' },
+  termine:     { label: 'Terminée',                 cls: 'bg-emerald-100 text-emerald-800', dot: 'bg-emerald-500' },
 };
 
 // Statuts vus par l'ADMIN (vocabulaire de travail)
 export const ADMIN_TICKET_STATUS: Record<string, { label: string; cls: string }> = {
-  en_attente: { label: 'À décider', cls: 'bg-blue-100 text-blue-700' },
-  valide:     { label: 'À faire',   cls: 'bg-amber-100 text-amber-800' },
-  reporte:    { label: 'Reporté',   cls: 'bg-violet-100 text-violet-700' },
-  refuse:     { label: 'Refusé',    cls: 'bg-slate-200 text-slate-600' },
-  termine:    { label: 'Terminé',   cls: 'bg-emerald-100 text-emerald-800' },
+  en_attente:  { label: 'À décider',      cls: 'bg-blue-100 text-blue-700' },
+  valide:      { label: 'À faire',        cls: 'bg-amber-100 text-amber-800' },
+  reporte:     { label: 'Reporté',        cls: 'bg-violet-100 text-violet-700' },
+  a_confirmer: { label: 'Chez le client', cls: 'bg-orange-100 text-orange-700' },
+  refuse:      { label: 'Refusé',         cls: 'bg-slate-200 text-slate-600' },
+  annule:      { label: 'Annulé (client)', cls: 'bg-slate-200 text-slate-600' },
+  termine:     { label: 'Terminé',        cls: 'bg-emerald-100 text-emerald-800' },
 };
 
 export const GRANT_SOURCE: Record<string, string> = {

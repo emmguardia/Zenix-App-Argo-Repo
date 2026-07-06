@@ -42,17 +42,39 @@ async function onInvoicePaid(invoice) {
 
   if (org.status !== 'active') await setOrgStatus(org.id, 'active');
 
-  // Tickets "reporté au mois suivant" : consommation FIFO du nouveau lot
-  const processed = await processDeferredTickets(org.id);
+  // Tickets reportés → retour chez le client pour re-confirmation
+  const deferred = await processDeferredTickets(org.id);
+
+  // Engagement 1 an : au 11e paiement, coupon 100% "une fois" → 12e mois à 0 €
+  let freeMonthApplied = false;
+  if (org.billing_interval === 'annual' && process.env.STRIPE_COUPON_FREE_MONTH) {
+    const [cycles] = await getPool().execute(
+      "SELECT COUNT(*) AS n FROM credit_grants WHERE organization_id = ? AND source = 'forfait'",
+      [org.id]
+    );
+    if (Number(cycles[0].n) === 11 && org.stripe_subscription_id) {
+      try {
+        await getStripe().subscriptions.update(org.stripe_subscription_id, {
+          discounts: [{ coupon: process.env.STRIPE_COUPON_FREE_MONTH }],
+        });
+        freeMonthApplied = true;
+        await audit('system', null, 'subscription.free-month-applied', 'organization', org.id);
+      } catch (e) {
+        console.error('[stripe] coupon 12e mois:', e.message);
+        notifyDiscord('⚠️ Coupon 12e mois NON appliqué', `**${org.name}** — à faire à la main : ${e.message}`);
+      }
+    }
+  }
 
   await audit('system', null, 'credits.grant', 'organization', org.id, {
-    source: 'forfait', quantity, invoice: invoice.id, deferredProcessed: processed.length,
+    source: 'forfait', quantity, invoice: invoice.id, deferredReturned: deferred,
   });
   notifyDiscord(
     '💰 Prélèvement réussi',
     `**${org.name}** — ${(invoice.total / 100).toFixed(2)} € (${org.plan})\n` +
     `+${quantity} crédits (expirent le ${expiresAt.toLocaleDateString('fr-FR')})` +
-    (processed.length ? `\n${processed.length} ticket(s) reporté(s) validé(s) automatiquement` : '')
+    (deferred ? `\n${deferred} demande(s) reportée(s) renvoyée(s) au client pour confirmation` : '') +
+    (freeMonthApplied ? '\n🎁 **12e mois offert appliqué** — le prochain prélèvement sera à 0 €' : '')
   );
 }
 

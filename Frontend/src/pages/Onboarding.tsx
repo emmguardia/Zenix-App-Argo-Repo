@@ -15,10 +15,15 @@ const STEPS = [
 ];
 
 const PLANS = [
-  { key: 'start', name: 'Zenix Start', price: '39€', desc: 'Hébergement sécurisé, sauvegardes quotidiennes, 2 modifications par mois.' },
-  { key: 'relax', name: 'Zenix Relax', price: '69€', desc: 'Tout Zenix Start + 6 modifications par mois et suivi renforcé.', highlight: true },
-  { key: 'pro',   name: 'Zenix Pro',   price: '149€', desc: 'Tout Zenix Relax + rapport mensuel et priorité maximale.' },
+  { key: 'start', name: 'Zenix Start', desc: 'Hébergement sécurisé, sauvegardes quotidiennes, 2 modifications par mois.' },
+  { key: 'relax', name: 'Zenix Relax', desc: 'Tout Zenix Start + 6 modifications par mois et suivi renforcé.', highlight: true },
+  { key: 'pro',   name: 'Zenix Pro',   desc: 'Tout Zenix Relax + rapport mensuel et priorité maximale.' },
 ];
+
+const PRICING: Record<'standard' | 'asso', Record<string, string>> = {
+  standard: { start: '39€', relax: '69€', pro: '149€' },
+  asso:     { start: '20€', relax: '45€', pro: '80€' },
+};
 
 export default function Onboarding({ state, onDone }: { state: OnboardingState; onDone: () => void }) {
   const { logout } = useAuth();
@@ -59,26 +64,37 @@ export default function Onboarding({ state, onDone }: { state: OnboardingState; 
         {step === 'plan'     && <StepPlan onNext={setStep} />}
         {step === 'review'   && <StepReview />}
         {step === 'contract' && <StepContract orgId={state.organization?.id} onNext={setStep} />}
-        {step === 'payment'  && <StepPayment orgId={state.organization?.id} plan={state.organization?.plan} onNext={setStep} />}
+        {step === 'payment'  && <StepPayment orgId={state.organization?.id} plan={state.organization?.plan} tier={state.organization?.pricing_tier} onNext={setStep} />}
       </div>
     </div>
   );
 }
 
-/* ── Étape 1 : informations ────────────────────────────────────────────── */
+/* ── Étape 1 : informations (champs verrouillés + autocomplétion) ──────── */
 function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void }) {
   const toast = useToast();
-  const [f, setF] = useState({ first_name: '', last_name: '', phone: '', address: '', siret: '' });
+  const [f, setF] = useState({ first_name: '', last_name: '', phone: '', address: '', siret: '', website: '' });
+  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const inputCls = 'w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none';
+
+  // Autocomplétion via la Base Adresse Nationale (data.gouv.fr, gratuite)
+  const onAddress = (value: string) => {
+    setF((p) => ({ ...p, address: value }));
+    if (value.trim().length >= 5) {
+      fetch(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(value)}&limit=5`)
+        .then((r) => r.json())
+        .then((d: { features?: { properties: { label: string } }[] }) =>
+          setSuggestions(d.features?.map((x) => x.properties.label) ?? []))
+        .catch(() => setSuggestions([]));
+    } else setSuggestions([]);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
-      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/profile', {
-        ...f, siret: f.siret.replace(/\s/g, ''),
-      });
+      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/profile', f);
       onNext(r.step);
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -90,18 +106,42 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
       <p className="mb-4 -mt-2 text-sm text-slate-500">Ces informations serviront pour votre contrat et vos factures.</p>
       <form onSubmit={submit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
-          <input className={inputCls} placeholder="Prénom" required value={f.first_name}
-            onChange={(e) => setF({ ...f, first_name: e.target.value })} />
-          <input className={inputCls} placeholder="Nom" required value={f.last_name}
-            onChange={(e) => setF({ ...f, last_name: e.target.value })} />
+          <input className={inputCls} placeholder="Prénom" required maxLength={20} value={f.first_name}
+            onChange={(e) => setF({ ...f, first_name: e.target.value.replace(/\d/g, '').slice(0, 20) })} />
+          <input className={inputCls} placeholder="Nom" required maxLength={30} value={f.last_name}
+            onChange={(e) => setF({ ...f, last_name: e.target.value.replace(/\d/g, '').slice(0, 30) })} />
         </div>
-        <input className={inputCls} placeholder="Téléphone" type="tel" required minLength={6} maxLength={30} value={f.phone}
-          onChange={(e) => setF({ ...f, phone: e.target.value })} />
-        <input className={inputCls} placeholder="Adresse complète (rue, code postal, ville)" required minLength={5} value={f.address}
-          onChange={(e) => setF({ ...f, address: e.target.value })} />
+        <input className={inputCls} placeholder="Téléphone (10 chiffres)" type="tel" inputMode="numeric"
+          required pattern="\d{10}" title="10 chiffres, sans espaces" value={f.phone}
+          onChange={(e) => setF({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
+        <div className="relative">
+          <input className={inputCls} placeholder="Adresse complète (rue, code postal, ville)" required minLength={5}
+            value={f.address} onChange={(e) => onAddress(e.target.value)} autoComplete="off" />
+          {suggestions.length > 0 && (
+            <ul className="absolute z-10 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+              {suggestions.map((s) => (
+                <li key={s}>
+                  <button type="button"
+                    onClick={() => { setF((p) => ({ ...p, address: s })); setSuggestions([]); }}
+                    className="w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-blue-50">
+                    {s}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <input className={inputCls} placeholder="SIRET (14 chiffres — laissez vide si particulier)"
-          pattern="\d{14}" title="14 chiffres, sans espaces" value={f.siret}
-          onChange={(e) => setF({ ...f, siret: e.target.value.replace(/\s/g, '') })} />
+          inputMode="numeric" pattern="\d{14}" title="14 chiffres, sans espaces" value={f.siret}
+          onChange={(e) => setF({ ...f, siret: e.target.value.replace(/\D/g, '').slice(0, 14) })} />
+        <div className="flex items-stretch">
+          <span className="flex items-center rounded-l-xl border border-r-0 border-slate-300 bg-slate-100 px-3 text-sm text-slate-500">
+            https://
+          </span>
+          <input className={`${inputCls} !rounded-l-none`} placeholder="votre-site.fr (optionnel — laissez vide si pas encore de site)"
+            value={f.website}
+            onChange={(e) => setF({ ...f, website: e.target.value.replace(/^https?:\/\//i, '').replace(/\s/g, '') })} />
+        </div>
         <button type="submit" disabled={busy}
           className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
           {busy ? 'Enregistrement…' : 'Continuer'}
@@ -116,11 +156,12 @@ function StepPlan({ onNext }: { onNext: (s: OnboardingState['step']) => void }) 
   const toast = useToast();
   const [busy, setBusy] = useState<string | null>(null);
   const [interval, setInterval] = useState<'monthly' | 'annual'>('monthly');
+  const [tier, setTier] = useState<'standard' | 'asso'>('standard');
 
   const choose = async (plan: string) => {
     setBusy(plan);
     try {
-      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/plan', { plan, interval });
+      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/plan', { plan, interval, tier });
       onNext(r.step);
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -128,18 +169,33 @@ function StepPlan({ onNext }: { onNext: (s: OnboardingState['step']) => void }) 
     }
   };
 
+  const toggleCls = (active: boolean) =>
+    `rounded-lg px-4 py-1.5 text-sm font-medium ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`;
+
   return (
     <div className="space-y-3">
       <h2 className="text-center text-lg font-bold text-slate-900">Choisissez votre offre</h2>
       <p className="-mt-1 text-center text-sm text-slate-500">Hébergement, sécurité et sauvegardes toujours inclus.</p>
 
       <div className="mx-auto flex w-fit rounded-xl bg-slate-200 p-1">
-        <button onClick={() => setInterval('monthly')}
-          className={`rounded-lg px-4 py-1.5 text-sm font-medium ${interval === 'monthly' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+        <button onClick={() => setTier('standard')} className={toggleCls(tier === 'standard')}>
+          Entreprise / Indépendant
+        </button>
+        <button onClick={() => setTier('asso')} className={toggleCls(tier === 'asso')}>
+          Association <span className="font-bold text-emerald-600">· tarif réduit</span>
+        </button>
+      </div>
+      {tier === 'asso' && (
+        <p className="text-center text-xs text-slate-500">
+          Grille solidaire réservée aux associations — Zenix vérifiera votre statut à la validation.
+        </p>
+      )}
+
+      <div className="mx-auto flex w-fit rounded-xl bg-slate-200 p-1">
+        <button onClick={() => setInterval('monthly')} className={toggleCls(interval === 'monthly')}>
           Mensuel, sans engagement
         </button>
-        <button onClick={() => setInterval('annual')}
-          className={`rounded-lg px-4 py-1.5 text-sm font-medium ${interval === 'annual' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
+        <button onClick={() => setInterval('annual')} className={toggleCls(interval === 'annual')}>
           Engagement 1 an <span className="font-bold text-emerald-600">· 1 mois offert</span>
         </button>
       </div>
@@ -156,10 +212,10 @@ function StepPlan({ onNext }: { onNext: (s: OnboardingState['step']) => void }) 
           }`}>
           <div className="flex items-center justify-between">
             <div>
-              <span className="font-bold text-slate-900">{p.name}</span>
+              <span className="font-bold text-slate-900">{p.name}{tier === 'asso' ? ' Asso' : ''}</span>
               {p.highlight && <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700">Le plus choisi</span>}
             </div>
-            <span className="text-xl font-bold text-blue-600">{p.price}<span className="text-sm font-normal text-slate-400">/mois</span></span>
+            <span className="text-xl font-bold text-blue-600">{PRICING[tier][p.key]}<span className="text-sm font-normal text-slate-400">/mois</span></span>
           </div>
           <p className="mt-1 text-sm text-slate-500">{p.desc}</p>
         </button>
@@ -248,12 +304,13 @@ function StepContract({ orgId, onNext }: { orgId?: string; onNext: (s: Onboardin
 }
 
 /* ── Étape 5 : paiement (Stripe Elements) ──────────────────────────────── */
-function StepPayment({ orgId, plan, onNext }: { orgId?: string; plan?: string | null; onNext: (s: OnboardingState['step']) => void }) {
+function StepPayment({ orgId, plan, tier, onNext }: { orgId?: string; plan?: string | null; tier?: 'standard' | 'asso'; onNext: (s: OnboardingState['step']) => void }) {
   const toast = useToast();
   const [accepted, setAccepted] = useState(false);
   const [stripePromise, setStripePromise] = useState<Promise<Stripe | null> | null>(null);
   const [clientSecret, setClientSecret] = useState('');
   const planInfo = PLANS.find((p) => p.key === plan);
+  const price = plan ? PRICING[tier ?? 'standard'][plan] : '';
 
   const start = async () => {
     if (!orgId) return;
@@ -272,7 +329,7 @@ function StepPayment({ orgId, plan, onNext }: { orgId?: string; plan?: string | 
     <Card title="Dernière étape : votre moyen de paiement">
       {planInfo && (
         <p className="mb-4 -mt-2 text-sm text-slate-500">
-          {planInfo.name} — <span className="font-semibold text-slate-700">{planInfo.price}/mois</span>.{' '}
+          {planInfo.name}{tier === 'asso' ? ' Asso' : ''} — <span className="font-semibold text-slate-700">{price}/mois</span>.{' '}
           <span className="font-semibold text-emerald-700">Aucun prélèvement aujourd'hui</span> :
           votre carte est simplement enregistrée de façon sécurisée. Le premier prélèvement
           n'aura lieu qu'à la mise en ligne de votre site.

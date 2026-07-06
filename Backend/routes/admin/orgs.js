@@ -3,7 +3,7 @@ import { z } from 'zod';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../config/database.js';
-import { getStripe, PLAN_PRICES, priceToPlan } from '../../config/stripe.js';
+import { getStripe, planPrice, priceToPlan } from '../../config/stripe.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
@@ -34,9 +34,13 @@ const orgSchema = z.object({
   billing_address:    z.string().trim().max(1000).optional().nullable(),
   plan:               z.enum(['start', 'relax', 'pro']).optional().nullable(),
   billing_interval:   z.enum(['monthly', 'annual']).optional(),
+  pricing_tier:       z.enum(['standard', 'asso']).optional(),
   custom_price_id:    z.string().trim().max(255).optional().nullable(),
   linked_domain:      z.string().trim().max(255).optional().nullable(),
   stripe_customer_id: z.string().trim().max(255).optional().nullable(),
+  contact_first_name: z.string().trim().max(20).optional().nullable(),
+  contact_last_name:  z.string().trim().max(30).optional().nullable(),
+  contact_phone:      z.string().trim().max(30).optional().nullable(),
 });
 
 /* ── POST /api/admin/orgs — créer une organisation ─────────────────────── */
@@ -110,6 +114,39 @@ router.post('/:id/validate', async (req, res) => {
 
   await audit('admin', req.user.uid, 'org.validate', 'organization', req.params.id);
   res.json({ validated: true, next: 'Dépose le contrat d\'hébergement dans ses documents' });
+});
+
+/* ── DELETE /api/admin/orgs/:id — suppression complète d'un client ─────────
+ * Annule l'abonnement Stripe, purge les fichiers R2, supprime tout en base
+ * (cascade : memberships, crédits, tickets, documents). Double validation UI. */
+router.delete('/:id', async (req, res) => {
+  const pool = getPool();
+  const [orgs] = await pool.execute('SELECT * FROM organizations WHERE id = ? LIMIT 1', [req.params.id]);
+  const org = orgs[0];
+  if (!org) return res.status(404).json({ error: 'Organisation introuvable' });
+
+  // 1. Abonnement Stripe annulé (le customer est conservé côté Stripe : compta)
+  if (org.stripe_subscription_id) {
+    try { await getStripe().subscriptions.cancel(org.stripe_subscription_id); }
+    catch (e) { console.warn('[admin] annulation subscription:', e.message); }
+  }
+
+  // 2. Fichiers R2 (documents + pièces jointes des tickets)
+  const [docs] = await pool.execute('SELECT r2_key FROM documents WHERE organization_id = ?', [org.id]);
+  const [atts] = await pool.execute(
+    'SELECT a.r2_key FROM ticket_attachments a JOIN tickets t ON t.id = a.ticket_id WHERE t.organization_id = ?',
+    [org.id]
+  );
+  for (const { r2_key } of [...docs, ...atts]) {
+    try { await deleteObject(r2_key); } catch (e) { console.warn('[admin] purge R2:', e.message); }
+  }
+
+  // 3. Base (cascade)
+  await pool.execute('DELETE FROM organizations WHERE id = ?', [org.id]);
+
+  await audit('admin', req.user.uid, 'org.delete', 'organization', org.id, { name: org.name });
+  notifyDiscord('🗑️ Client supprimé', `**${org.name}** — abonnement annulé, données et fichiers purgés.`);
+  res.json({ deleted: true });
 });
 
 /* ═══ Documents (dépôt / suppression / téléchargement) ════════════════════ */
@@ -230,8 +267,8 @@ router.post('/:id/activate', async (req, res) => {
   if (!org.stripe_customer_id) return res.status(400).json({ error: 'Aucun customer Stripe lié' });
   if (!org.plan) return res.status(400).json({ error: 'Aucune formule définie' });
 
-  // Tarif spécial client (ex. grille Asso) prioritaire sur le tarif public
-  const priceId = org.custom_price_id || PLAN_PRICES[org.plan]?.();
+  // Tarif spécial client prioritaire, sinon grille (standard/asso) + formule
+  const priceId = org.custom_price_id || planPrice(org.plan, org.pricing_tier);
   if (!priceId) return res.status(500).json({ error: `STRIPE_PRICE_${org.plan.toUpperCase()} non configuré` });
 
   const stripe = getStripe();

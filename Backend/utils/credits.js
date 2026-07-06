@@ -100,27 +100,15 @@ export async function createGrant(orgId, source, quantity, expiresAt, { used = 0
 
 /**
  * À l'arrivée d'un nouveau lot forfait : les tickets "reporté au mois
- * suivant" consomment le nouveau lot en FIFO et passent en validé.
- * Le surplus reste reporté (attendra le mois d'après).
+ * suivant" reviennent chez le CLIENT (statut a_confirmer). C'est lui qui
+ * décide s'il veut toujours la modification : confirmation → crédit du
+ * nouveau mois décompté → arrive chez Enzo en "en_attente" ; sinon annulé.
  */
 export async function processDeferredTickets(orgId) {
-  const [tickets] = await getPool().execute(
-    `SELECT id FROM tickets
-     WHERE organization_id = ? AND status = 'reporte'
-     ORDER BY created_at ASC`,
+  const [result] = await getPool().execute(
+    `UPDATE tickets SET status = 'a_confirmer'
+     WHERE organization_id = ? AND status = 'reporte'`,
     [orgId]
   );
-
-  const processed = [];
-  for (const ticket of tickets) {
-    const grantId = await consumeCredit(orgId);
-    if (!grantId) break;
-    await getPool().execute(
-      `UPDATE tickets SET status = 'valide', credit_grant_id = ?, decided_at = NOW()
-       WHERE id = ? AND status = 'reporte'`,
-      [grantId, ticket.id]
-    );
-    processed.push(ticket.id);
-  }
-  return processed;
+  return result.affectedRows;
 }

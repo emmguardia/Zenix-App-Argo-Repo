@@ -27,6 +27,7 @@ export interface AdminOrganization extends Organization {
   contact_phone: string | null;
   validated_at: string | null;
   billing_interval: 'monthly' | 'annual';
+  pricing_tier: 'standard' | 'asso';
   custom_price_id: string | null;
 }
 
@@ -34,6 +35,7 @@ export interface OnboardingState {
   step: 'infos' | 'plan' | 'review' | 'contract' | 'payment' | 'done';
   organization: {
     id: string; name: string; plan: string | null; status: string;
+    pricing_tier: 'standard' | 'asso'; billing_interval: 'monthly' | 'annual';
     contact_first_name: string | null; contact_last_name: string | null;
     cgv_accepted_at: string | null;
   } | null;
@@ -82,11 +84,12 @@ export interface Ticket {
   id: string;
   title: string;
   description: string;
-  status: 'en_attente' | 'valide' | 'refuse' | 'reporte' | 'termine';
+  status: 'en_attente' | 'valide' | 'refuse' | 'reporte' | 'a_confirmer' | 'annule' | 'termine';
   created_at: string;
   decided_at: string | null;
   completed_at: string | null;
   credit_consumed?: number;
+  attachments?: number;
   created_by_name?: string | null;
 }
 
@@ -95,6 +98,7 @@ export interface AdminTicket extends Ticket {
   org_name: string;
   created_by_email: string | null;
   credit_grant_id: string | null;
+  attachments: number;
 }
 
 export interface Invoice {

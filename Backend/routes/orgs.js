@@ -3,7 +3,7 @@ import { z } from 'zod';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { getPool } from '../config/database.js';
-import { getStripe, PLAN_PRICES } from '../config/stripe.js';
+import { getStripe } from '../config/stripe.js';
 import { putObject } from '../config/r2.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireOrgAccess } from '../middleware/orgAccess.js';
@@ -59,6 +59,7 @@ router.get('/:orgId/tickets', async (req, res) => {
   const [tickets] = await getPool().execute(
     `SELECT t.id, t.title, t.description, t.status, t.created_at, t.decided_at, t.completed_at,
             t.credit_grant_id IS NOT NULL AS credit_consumed,
+            (SELECT COUNT(*) FROM ticket_attachments a WHERE a.ticket_id = t.id) AS attachments,
             u.name AS created_by_name
      FROM tickets t
      LEFT JOIN users u ON u.id = t.created_by
@@ -74,16 +75,38 @@ const ticketSchema = z.object({
   description: z.string().trim().min(1).max(5000),
 });
 
-/* ── POST /api/orgs/:orgId/tickets — soumission (décompte immédiat) ────── */
-router.post('/:orgId/tickets', ticketLimiter, async (req, res) => {
+const uploadTicketFile = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) =>
+    cb(null, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+});
+
+/* ── POST /api/orgs/:orgId/tickets — soumission (décompte immédiat) ────────
+ * Multipart : title, description + 1 fichier optionnel (PDF/image, 10 Mo). */
+router.post('/:orgId/tickets', ticketLimiter, uploadTicketFile.single('file'), async (req, res) => {
   const parsed = ticketSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Données invalides' });
 
   const { title, description } = parsed.data;
 
   // Décompte à la soumission, lot expirant le plus tôt d'abord.
-  // Solde à zéro : soumission AUTORISÉE, sans décompte (décision manuelle Enzo).
   const grantId = await consumeCredit(req.org.id);
+
+  // Hors crédit : 1 seule demande en cours maximum
+  if (!grantId) {
+    const [open] = await getPool().execute(
+      `SELECT COUNT(*) AS n FROM tickets
+       WHERE organization_id = ? AND credit_grant_id IS NULL
+         AND status IN ('en_attente', 'reporte', 'a_confirmer')`,
+      [req.org.id]
+    );
+    if (Number(open[0].n) >= 1) {
+      return res.status(409).json({
+        error: 'Vous avez déjà une demande en attente hors crédit. Attendez sa réponse avant d\'en envoyer une autre.',
+      });
+    }
+  }
 
   const ticketId = randomUUID();
   await getPool().execute(
@@ -92,13 +115,24 @@ router.post('/:orgId/tickets', ticketLimiter, async (req, res) => {
     [ticketId, req.org.id, req.user.uid, grantId, title, description]
   );
 
+  if (req.file) {
+    const ext = req.file.mimetype === 'application/pdf' ? 'pdf' : req.file.mimetype.split('/')[1];
+    const r2Key = `orgs/${req.org.id}/tickets/${ticketId}.${ext}`;
+    const filename = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+    await putObject(r2Key, req.file.buffer, req.file.mimetype);
+    await getPool().execute(
+      'INSERT INTO ticket_attachments (ticket_id, r2_key, filename, size) VALUES (?, ?, ?, ?)',
+      [ticketId, r2Key, filename, req.file.size]
+    );
+  }
+
   const balance = await getBalance(req.org.id);
   await audit('client', req.user.uid, 'ticket.create', 'ticket', ticketId, {
-    org: req.org.name, creditConsumed: !!grantId,
+    org: req.org.name, creditConsumed: !!grantId, attachment: !!req.file,
   });
   notifyDiscord(
     grantId ? '🎫 Nouveau ticket' : '⚠️ Ticket HORS CRÉDIT',
-    `**${req.org.name}** — ${title}\npar ${req.user.name || req.user.email}${grantId ? '' : '\n**Aucun crédit disponible** → décision manuelle requise'}`
+    `**${req.org.name}** — ${title}\npar ${req.user.name || req.user.email}${req.file ? ' (+ pièce jointe)' : ''}${grantId ? '' : '\n**Aucun crédit disponible** → décision manuelle requise'}`
   );
 
   res.status(201).json({
@@ -107,6 +141,49 @@ router.post('/:orgId/tickets', ticketLimiter, async (req, res) => {
     balance,
     warning: grantId ? null : 'Plus de crédit disponible : votre demande sera étudiée manuellement.',
   });
+});
+
+/* ── GET /api/orgs/:orgId/tickets/:ticketId/attachment — URL signée ─────── */
+router.get('/:orgId/tickets/:ticketId/attachment', async (req, res) => {
+  const [rows] = await getPool().execute(
+    `SELECT a.r2_key, a.filename FROM ticket_attachments a
+     JOIN tickets t ON t.id = a.ticket_id
+     WHERE t.id = ? AND t.organization_id = ? LIMIT 1`,
+    [req.params.ticketId, req.org.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Pièce jointe introuvable' });
+  const url = await signedDownloadUrl(rows[0].r2_key, rows[0].filename);
+  res.json({ url, expiresIn: 300 });
+});
+
+/* ── Tickets reportés revenus en début de mois : le client re-valide ────── */
+router.post('/:orgId/tickets/:ticketId/confirm', async (req, res) => {
+  const [rows] = await getPool().execute(
+    "SELECT id, title FROM tickets WHERE id = ? AND organization_id = ? AND status = 'a_confirmer' LIMIT 1",
+    [req.params.ticketId, req.org.id]
+  );
+  if (!rows.length) return res.status(404).json({ error: 'Demande introuvable ou déjà traitée' });
+
+  const grantId = await consumeCredit(req.org.id);
+  if (!grantId) return res.status(409).json({ error: 'Plus de crédit disponible ce mois-ci' });
+
+  await getPool().execute(
+    "UPDATE tickets SET status = 'en_attente', credit_grant_id = ? WHERE id = ?",
+    [grantId, rows[0].id]
+  );
+  await audit('client', req.user.uid, 'ticket.reconfirm', 'ticket', rows[0].id, { org: req.org.name });
+  notifyDiscord('🔁 Demande reportée confirmée', `**${req.org.name}** — "${rows[0].title}" (crédit du nouveau mois décompté)`);
+  res.json({ confirmed: true });
+});
+
+router.post('/:orgId/tickets/:ticketId/cancel', async (req, res) => {
+  const [result] = await getPool().execute(
+    "UPDATE tickets SET status = 'annule' WHERE id = ? AND organization_id = ? AND status = 'a_confirmer'",
+    [req.params.ticketId, req.org.id]
+  );
+  if (!result.affectedRows) return res.status(404).json({ error: 'Demande introuvable ou déjà traitée' });
+  await audit('client', req.user.uid, 'ticket.cancel', 'ticket', req.params.ticketId, { org: req.org.name });
+  res.json({ canceled: true });
 });
 
 /* ── GET /api/orgs/:orgId/documents ────────────────────────────────────── */

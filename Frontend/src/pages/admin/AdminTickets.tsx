@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, CheckCheck, Clock, Gift, X } from 'lucide-react';
+import { Check, CheckCheck, Clock, Gift, Paperclip, X } from 'lucide-react';
 import { api, type AdminTicket } from '../../api';
 import { ADMIN_TICKET_STATUS, Badge, Card, ErrorNote, fmtDate, Spinner, useToast } from '../../ui';
 
 const FILTERS = [
-  { value: 'en_attente', label: 'À décider' },
-  { value: 'valide',     label: 'À faire' },
-  { value: 'reporte',    label: 'Reportés' },
-  { value: 'termine',    label: 'Terminés' },
-  { value: 'refuse',     label: 'Refusés' },
-  { value: '',           label: 'Tous' },
+  { value: 'en_attente',  label: 'À décider' },
+  { value: 'valide',      label: 'À faire' },
+  { value: 'a_confirmer', label: 'Chez le client' },
+  { value: 'reporte',     label: 'Reportés' },
+  { value: 'termine',     label: 'Terminés' },
+  { value: 'refuse',      label: 'Refusés' },
+  { value: '',            label: 'Tous' },
 ];
 
 export default function AdminTickets() {
@@ -83,8 +84,18 @@ export default function AdminTickets() {
                   </div>
                   <p className="mt-1.5 font-medium text-slate-800">{t.title}</p>
                   <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{t.description}</p>
-                  <p className="mt-2 text-xs text-slate-400">
+                  <p className="mt-2 flex items-center gap-2 text-xs text-slate-400">
                     {t.created_by_name || t.created_by_email || '?'} · {fmtDate(t.created_at)}
+                    {t.attachments > 0 && (
+                      <button
+                        onClick={async () => {
+                          const { url } = await api.get<{ url: string }>(`/admin/tickets/${t.id}/attachment`);
+                          window.open(url, '_blank', 'noreferrer');
+                        }}
+                        className="inline-flex items-center gap-1 font-medium text-blue-600 hover:underline">
+                        <Paperclip className="h-3 w-3" /> pièce jointe
+                      </button>
+                    )}
                   </p>
                 </div>
 

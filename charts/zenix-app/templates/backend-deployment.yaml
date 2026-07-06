@@ -64,6 +64,14 @@ spec:
           value: {{ .Values.backend.env.STRIPE_PRICE_PRO | quote }}
         - name: STRIPE_PUBLISHABLE_KEY
           value: {{ .Values.backend.env.STRIPE_PUBLISHABLE_KEY | quote }}
+        - name: STRIPE_PRICE_START_ASSO
+          value: {{ .Values.backend.env.STRIPE_PRICE_START_ASSO | quote }}
+        - name: STRIPE_PRICE_RELAX_ASSO
+          value: {{ .Values.backend.env.STRIPE_PRICE_RELAX_ASSO | quote }}
+        - name: STRIPE_PRICE_PRO_ASSO
+          value: {{ .Values.backend.env.STRIPE_PRICE_PRO_ASSO | quote }}
+        - name: STRIPE_COUPON_FREE_MONTH
+          value: {{ .Values.backend.env.STRIPE_COUPON_FREE_MONTH | quote }}
         - name: DB_HOST
           valueFrom:
             secretKeyRef:
