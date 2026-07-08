@@ -18,7 +18,7 @@ export function planPrice(plan, tier = 'standard') {
 /** Price Stripe → formule (pour détecter le plan d'un abonnement existant) */
 export function priceToPlan(priceId) {
   if (!priceId) return null;
-  for (const plan of ['start', 'relax', 'pro']) {
+  for (const plan of ['essentiel', 'start', 'relax', 'pro']) {
     if (priceId === planPrice(plan, 'standard') || priceId === planPrice(plan, 'asso')) return plan;
   }
   return null;

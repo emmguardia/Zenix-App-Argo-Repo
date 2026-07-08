@@ -445,6 +445,7 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Formule</label>
           <select className={inputCls} value={f.plan} onChange={(e) => setF({ ...f, plan: e.target.value })}>
+            <option value="essentiel">Zenix Essentiel (asso, 15€ — 0 modif)</option>
             <option value="start">Zenix Start</option>
             <option value="relax">Zenix Relax</option>
             <option value="pro">Zenix Pro</option>

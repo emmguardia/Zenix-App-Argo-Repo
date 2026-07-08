@@ -13,7 +13,7 @@ const PAYMENT_STATUS: Record<string, { label: string; cls: string }> = {
   draft:         { label: 'Brouillon',  cls: 'bg-slate-200 text-slate-600' },
 };
 
-const PLAN_COLORS: Record<string, string> = { start: '#60a5fa', relax: '#2563eb', pro: '#1e3a8a' };
+const PLAN_COLORS: Record<string, string> = { essentiel: '#94a3b8', start: '#60a5fa', relax: '#2563eb', pro: '#1e3a8a' };
 const MONTH_LABELS = ['janv', 'févr', 'mars', 'avr', 'mai', 'juin', 'juil', 'août', 'sept', 'oct', 'nov', 'déc'];
 
 export default function AdminDashboard() {

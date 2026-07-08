@@ -27,8 +27,9 @@ async function onInvoicePaid(invoice) {
     return;
   }
 
+  // Essentiel = 0 crédit inclus : on crée quand même un lot (quantité 0) pour
+  // garder l'idempotence via stripe_invoice_id et la trace du cycle payé.
   const quantity = planCredits(org.plan);
-  if (!quantity) return;
 
   // Le lot expire à la fin de la période facturée (= prochain prélèvement)
   const periodEnd = invoice.lines?.data?.[0]?.period?.end ?? invoice.period_end;
@@ -72,7 +73,7 @@ async function onInvoicePaid(invoice) {
   notifyDiscord(
     '💰 Prélèvement réussi',
     `**${org.name}** — ${(invoice.total / 100).toFixed(2)} € (${org.plan})\n` +
-    `+${quantity} crédits (expirent le ${expiresAt.toLocaleDateString('fr-FR')})` +
+    (quantity > 0 ? `+${quantity} crédits (expirent le ${expiresAt.toLocaleDateString('fr-FR')})` : 'Formule Essentiel — aucun crédit inclus') +
     (deferred ? `\n${deferred} demande(s) reportée(s) renvoyée(s) au client pour confirmation` : '') +
     (freeMonthApplied ? '\n🎁 **12e mois offert appliqué** — le prochain prélèvement sera à 0 €' : '')
   );

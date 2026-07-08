@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { getPool } from '../../config/database.js';
 import { requireAdmin } from '../../middleware/auth.js';
-import { refundCredit, createGrant } from '../../utils/credits.js';
+import { refundCredit, createGrant, consumeCredit } from '../../utils/credits.js';
 import { signedDownloadUrl } from '../../config/r2.js';
 import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
@@ -26,6 +27,53 @@ router.get('/', async (req, res) => {
     status ? [status] : []
   );
   res.json({ tickets });
+});
+
+const manualTicketSchema = z.object({
+  organization_id: z.string().uuid(),
+  title:           z.string().trim().min(3).max(255),
+  description:     z.string().trim().max(5000).optional().or(z.literal('')),
+  status:          z.enum(['termine', 'valide', 'en_attente']).default('termine'),
+  date:            z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal('')),
+  consume_credit:  z.boolean().default(false),
+});
+
+/* ── POST /api/admin/tickets — saisie manuelle (historique / hors app) ─────
+ * Permet d'enregistrer une modification déjà faite (date passée) ou une
+ * demande reçue hors plateforme. Décompte de crédit optionnel. */
+router.post('/', async (req, res) => {
+  const parsed = manualTicketSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Données invalides' });
+  const d = parsed.data;
+
+  const pool = getPool();
+  const [orgs] = await pool.execute('SELECT id, name FROM organizations WHERE id = ? LIMIT 1', [d.organization_id]);
+  if (!orgs.length) return res.status(404).json({ error: 'Client introuvable' });
+
+  let grantId = null;
+  let creditWarning = null;
+  if (d.consume_credit) {
+    grantId = await consumeCredit(d.organization_id);
+    if (!grantId) creditWarning = 'Aucun crédit disponible : ticket créé sans décompte';
+  }
+
+  const ticketId = randomUUID();
+  const when = d.date || null; // NULL → NOW() par défaut
+  await pool.execute(
+    `INSERT INTO tickets (id, organization_id, created_by, credit_grant_id, title, description, status,
+       created_at, decided_at, completed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?,
+       COALESCE(?, NOW()),
+       CASE WHEN ? IN ('valide', 'termine') THEN COALESCE(?, NOW()) ELSE NULL END,
+       CASE WHEN ? = 'termine' THEN COALESCE(?, NOW()) ELSE NULL END)`,
+    [ticketId, d.organization_id, req.user.uid, grantId, d.title, d.description || '(saisie manuelle)',
+     d.status, when, d.status, when, d.status, when]
+  );
+
+  await audit('admin', req.user.uid, 'ticket.manual-create', 'ticket', ticketId, {
+    org: orgs[0].name, status: d.status, date: d.date || 'auj.', creditConsumed: !!grantId,
+  });
+  res.status(201).json({ id: ticketId, warning: creditWarning });
 });
 
 /* ── GET /api/admin/tickets/:id/attachment — URL signée ────────────────── */

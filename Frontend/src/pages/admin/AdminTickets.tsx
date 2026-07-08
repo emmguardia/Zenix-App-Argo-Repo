@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, CheckCheck, Clock, Gift, Paperclip, X } from 'lucide-react';
-import { api, type AdminTicket } from '../../api';
-import { ADMIN_TICKET_STATUS, Badge, Card, ErrorNote, fmtDate, Spinner, useToast } from '../../ui';
+import { Check, CheckCheck, Clock, Gift, Paperclip, Plus, X } from 'lucide-react';
+import { api, type AdminOrganization, type AdminTicket } from '../../api';
+import { ADMIN_TICKET_STATUS, Badge, Card, ErrorNote, fmtDate, Modal, Spinner, useToast } from '../../ui';
 
 const FILTERS = [
   { value: 'en_attente',  label: 'À décider' },
@@ -20,6 +20,7 @@ export default function AdminTickets() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -50,7 +51,15 @@ export default function AdminTickets() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-2xl font-bold text-slate-900">Demandes clients</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-slate-900">Demandes clients</h1>
+        <button onClick={() => setShowAdd(true)}
+          className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+          <Plus className="h-4 w-4" /> Ajouter une demande
+        </button>
+      </div>
+
+      <AddTicketModal open={showAdd} onClose={() => setShowAdd(false)} onCreated={() => { setShowAdd(false); load(); }} />
 
       <div className="flex flex-wrap gap-1.5">
         {FILTERS.map((f) => (
@@ -142,5 +151,94 @@ export default function AdminTickets() {
         </div>
       )}
     </div>
+  );
+}
+
+/* ── Saisie manuelle : modification déjà faite ou reçue hors plateforme ──── */
+function AddTicketModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const toast = useToast();
+  const [orgs, setOrgs] = useState<AdminOrganization[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useState({
+    organization_id: '', title: '', description: '',
+    status: 'termine', date: new Date().toISOString().slice(0, 10), consume_credit: false,
+  });
+  const inputCls = 'w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none';
+
+  useEffect(() => {
+    if (!open) return;
+    api.get<{ organizations: AdminOrganization[] }>('/admin/orgs')
+      .then((r) => setOrgs(r.organizations))
+      .catch((e) => toast(e.message, 'error'));
+  }, [open, toast]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const r = await api.post<{ warning: string | null }>('/admin/tickets', {
+        ...f, consume_credit: f.consume_credit,
+      });
+      toast(r.warning ?? 'Demande enregistrée');
+      setF({ organization_id: '', title: '', description: '', status: 'termine', date: new Date().toISOString().slice(0, 10), consume_credit: false });
+      onCreated();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erreur', 'error');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open={open} title="Ajouter une demande manuellement" onClose={onClose}>
+      <p className="mb-4 text-sm text-slate-500">
+        Pour enregistrer une modification déjà faite (date passée) ou une demande reçue
+        par mail/téléphone. Elle apparaîtra dans l'historique du client.
+      </p>
+      <form onSubmit={submit} className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Client</label>
+          <select className={inputCls} required value={f.organization_id}
+            onChange={(e) => setF({ ...f, organization_id: e.target.value })}>
+            <option value="">— Choisir —</option>
+            {orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Titre</label>
+          <input className={inputCls} required minLength={3} maxLength={255} value={f.title}
+            placeholder="Ex. : Mise à jour des horaires d'été"
+            onChange={(e) => setF({ ...f, title: e.target.value })} />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500">Description (optionnel)</label>
+          <textarea className={inputCls} rows={3} maxLength={5000} value={f.description}
+            onChange={(e) => setF({ ...f, description: e.target.value })} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Date</label>
+            <input className={inputCls} type="date" required value={f.date}
+              max={new Date().toISOString().slice(0, 10)}
+              onChange={(e) => setF({ ...f, date: e.target.value })} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-500">Statut</label>
+            <select className={inputCls} value={f.status} onChange={(e) => setF({ ...f, status: e.target.value })}>
+              <option value="termine">Terminé (déjà fait)</option>
+              <option value="valide">À faire</option>
+              <option value="en_attente">À décider</option>
+            </select>
+          </div>
+        </div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={f.consume_credit}
+            onChange={(e) => setF({ ...f, consume_credit: e.target.checked })} className="h-4 w-4" />
+          Décompter 1 crédit du client
+        </label>
+        <button type="submit" disabled={busy || !f.organization_id}
+          className="w-full rounded-xl bg-blue-600 px-4 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+          {busy ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+      </form>
+    </Modal>
   );
 }

@@ -14,7 +14,9 @@ const STEPS = [
   { key: 'payment',  label: 'Paiement' },
 ];
 
-const PLANS = [
+interface PlanCard { key: string; name: string; desc: string; highlight?: boolean }
+
+const PLANS: PlanCard[] = [
   { key: 'start', name: 'Zenix Start', desc: 'Hébergement sécurisé, sauvegardes quotidiennes, 2 modifications par mois.' },
   { key: 'relax', name: 'Zenix Relax', desc: 'Tout Zenix Start + 6 modifications par mois et suivi renforcé.', highlight: true },
   { key: 'pro',   name: 'Zenix Pro',   desc: 'Tout Zenix Relax + rapport mensuel et priorité maximale.' },
@@ -22,7 +24,14 @@ const PLANS = [
 
 const PRICING: Record<'standard' | 'asso', Record<string, string>> = {
   standard: { start: '39€', relax: '69€', pro: '149€' },
-  asso:     { start: '20€', relax: '45€', pro: '80€' },
+  asso:     { essentiel: '15€', start: '20€', relax: '45€', pro: '80€' },
+};
+
+// Asso uniquement : hébergement seul, aucune modification incluse
+const ESSENTIEL: PlanCard = {
+  key: 'essentiel',
+  name: 'Zenix Essentiel',
+  desc: 'Hébergement, sécurité et sauvegardes — sans modification incluse. Besoin ponctuel ? Passage à Start Asso ou crédits à l\'unité.',
 };
 
 export default function Onboarding({ state, onDone }: { state: OnboardingState; onDone: () => void }) {
@@ -205,7 +214,7 @@ function StepPlan({ onNext }: { onNext: (s: OnboardingState['step']) => void }) 
         </p>
       )}
 
-      {PLANS.map((p) => (
+      {(tier === 'asso' ? [ESSENTIEL, ...PLANS] : PLANS).map((p) => (
         <button key={p.key} onClick={() => choose(p.key)} disabled={!!busy}
           className={`w-full rounded-2xl border-2 bg-white p-5 text-left transition-all hover:border-blue-500 hover:shadow-md disabled:opacity-60 ${
             p.highlight ? 'border-blue-400' : 'border-slate-200'

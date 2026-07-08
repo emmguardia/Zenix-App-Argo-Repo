@@ -14,6 +14,7 @@ export const fmtMoney = (cents: number, currency = 'eur') =>
 /* ── Libellés — langage client, pas jargon ─────────────────────────────── */
 
 export const PLAN_LABELS: Record<string, string> = {
+  essentiel: 'Zenix Essentiel',
   start: 'Zenix Start',
   relax: 'Zenix Relax',
   pro:   'Zenix Pro',

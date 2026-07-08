@@ -129,9 +129,11 @@ router.post('/profile', async (req, res) => {
 });
 
 const planSchema = z.object({
-  plan:     z.enum(['start', 'relax', 'pro']),
+  plan:     z.enum(['essentiel', 'start', 'relax', 'pro']),
   interval: z.enum(['monthly', 'annual']).default('monthly'),
   tier:     z.enum(['standard', 'asso']).default('standard'),
+}).refine((d) => d.plan !== 'essentiel' || d.tier === 'asso', {
+  message: 'L\'offre Essentiel est réservée aux associations',
 });
 
 /* ── POST /api/onboarding/plan ─────────────────────────────────────────── */

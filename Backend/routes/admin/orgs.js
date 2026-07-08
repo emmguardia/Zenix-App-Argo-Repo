@@ -32,7 +32,7 @@ const orgSchema = z.object({
   siret:              z.string().trim().max(14).optional().nullable(),
   vat_number:         z.string().trim().max(20).optional().nullable(),
   billing_address:    z.string().trim().max(1000).optional().nullable(),
-  plan:               z.enum(['start', 'relax', 'pro']).optional().nullable(),
+  plan:               z.enum(['essentiel', 'start', 'relax', 'pro']).optional().nullable(),
   billing_interval:   z.enum(['monthly', 'annual']).optional(),
   pricing_tier:       z.enum(['standard', 'asso']).optional(),
   custom_price_id:    z.string().trim().max(255).optional().nullable(),

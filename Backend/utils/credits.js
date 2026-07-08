@@ -9,6 +9,7 @@ import { getPool } from '../config/database.js';
 
 export function planCredits(plan) {
   const map = {
+    essentiel: 0, // hébergement seul (asso) : aucune modification incluse
     start: Number(process.env.PLAN_START_CREDITS || 2),
     relax: Number(process.env.PLAN_RELAX_CREDITS || 6),
     pro:   Number(process.env.PLAN_PRO_CREDITS   || 12),
