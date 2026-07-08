@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
-import { Download, FileText, FolderOpen } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Download, FileText, FolderOpen, PenLine } from 'lucide-react';
 import { api, type Document } from '../api';
 import { useAuth } from '../auth';
+import SignModal from '../components/SignModal';
 import { Card, ErrorNote, fmtDate, Spinner, useToast } from '../ui';
 
 const DOC_TYPES: Record<string, string> = {
@@ -17,17 +18,19 @@ export default function Documents() {
   const { currentOrg } = useAuth();
   const toast = useToast();
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [signing, setSigning] = useState<Document | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!currentOrg) { setLoading(false); return; }
-    setLoading(true);
     api.get<{ documents: Document[] }>(`/orgs/${currentOrg.id}/documents`)
       .then((r) => setDocuments(r.documents))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [currentOrg]);
+
+  useEffect(load, [load]);
 
   if (!currentOrg) {
     return <Card><p className="text-slate-600">Votre espace n'est pas encore relié à un site.</p></Card>;
@@ -44,9 +47,25 @@ export default function Documents() {
     }
   };
 
+  const toSign = documents.filter((d) => d.requires_signature && !d.signed_at);
+
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-bold text-slate-900">Mes documents</h1>
+
+      {toSign.map((d) => (
+        <div key={d.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border-2 border-blue-300 bg-blue-50 p-5">
+          <div className="min-w-0">
+            <p className="font-semibold text-blue-900">Signature attendue : {d.filename}</p>
+            <p className="text-sm text-blue-800">Lisez le document puis signez-le en ligne — c'est instantané.</p>
+          </div>
+          <button onClick={() => setSigning(d)}
+            className="flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-700">
+            <PenLine className="h-4 w-4" /> Lire et signer
+          </button>
+        </div>
+      ))}
+
       <Card>
         {documents.length === 0 ? (
           <div className="py-6 text-center">
@@ -67,6 +86,7 @@ export default function Documents() {
                     <p className="truncate font-semibold text-slate-900">{doc.filename}</p>
                     <p className="text-sm text-slate-500">
                       {DOC_TYPES[doc.type]} · {fmtDate(doc.created_at)}
+                      {doc.signed_at && <span className="ml-1 font-medium text-emerald-700">· Signé le {fmtDate(doc.signed_at)}</span>}
                     </p>
                   </div>
                 </div>
@@ -81,6 +101,11 @@ export default function Documents() {
           </ul>
         )}
       </Card>
+
+      {currentOrg && (
+        <SignModal orgId={currentOrg.id} doc={signing} open={!!signing}
+          onClose={() => setSigning(null)} onSigned={() => load()} />
+      )}
     </div>
   );
 }

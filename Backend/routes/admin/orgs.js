@@ -41,6 +41,7 @@ const orgSchema = z.object({
   contact_first_name: z.string().trim().max(20).optional().nullable(),
   contact_last_name:  z.string().trim().max(30).optional().nullable(),
   contact_phone:      z.string().trim().max(30).optional().nullable(),
+  billing_email:      z.string().trim().email().max(254).optional().nullable(),
 });
 
 /* ── POST /api/admin/orgs — créer une organisation ─────────────────────── */
@@ -162,7 +163,8 @@ const DOC_TYPES = ['contrat', 'cgv', 'devis', 'zip_offboarding', 'autre'];
 /* ── GET /api/admin/orgs/:id/documents ─────────────────────────────────── */
 router.get('/:id/documents', async (req, res) => {
   const [documents] = await getPool().execute(
-    `SELECT d.id, d.type, d.filename, d.created_at, u.name AS uploaded_by_name
+    `SELECT d.id, d.type, d.filename, d.created_at, d.requires_signature, d.signed_at,
+            d.signature_name, u.name AS uploaded_by_name
      FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by
      WHERE d.organization_id = ? ORDER BY d.created_at DESC`,
     [req.params.id]
@@ -184,11 +186,13 @@ router.post('/:id/documents', uploadDoc.single('file'), async (req, res) => {
   const r2Key = `orgs/${org.id}/${type}-${docId}.${ext}`;
   // multer livre le nom de fichier en latin1 → ré-encode (accents)
   const filename = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+  // Signature en ligne : uniquement pertinent pour un PDF
+  const requiresSignature = ['1', 'true'].includes(String(req.body.requires_signature)) && ext === 'pdf' ? 1 : 0;
   await putObject(r2Key, req.file.buffer, req.file.mimetype);
   await getPool().execute(
-    `INSERT INTO documents (id, organization_id, type, r2_key, filename, uploaded_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [docId, org.id, type, r2Key, filename, req.user.uid]
+    `INSERT INTO documents (id, organization_id, type, r2_key, filename, uploaded_by, requires_signature)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [docId, org.id, type, r2Key, filename, req.user.uid, requiresSignature]
   );
 
   // Contrat déposé pendant l'étape contrat → le client est prévenu côté UI
@@ -213,11 +217,11 @@ router.delete('/:id/documents/:docId', async (req, res) => {
 /* ── GET /api/admin/orgs/:id/documents/:docId/download ─────────────────── */
 router.get('/:id/documents/:docId/download', async (req, res) => {
   const [rows] = await getPool().execute(
-    'SELECT id, r2_key, filename FROM documents WHERE id = ? AND organization_id = ? LIMIT 1',
+    'SELECT id, r2_key, signed_r2_key, filename FROM documents WHERE id = ? AND organization_id = ? LIMIT 1',
     [req.params.docId, req.params.id]
   );
   if (!rows.length) return res.status(404).json({ error: 'Document introuvable' });
-  const url = await signedDownloadUrl(rows[0].r2_key, rows[0].filename);
+  const url = await signedDownloadUrl(rows[0].signed_r2_key || rows[0].r2_key, rows[0].filename);
   res.json({ url, expiresIn: 300 });
 });
 

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { loadStripe, type Stripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useElements, useStripe } from '@stripe/react-stripe-js';
-import { Check, Clock, Download, FileSignature, LogOut, Upload } from 'lucide-react';
+import { Check, Clock, FileSignature, LogOut, Upload } from 'lucide-react';
 import { api, type Document, type OnboardingState } from '../api';
 import { useAuth } from '../auth';
+import SignModal from '../components/SignModal';
 import { Card, Spinner, useToast } from '../ui';
 
 const STEPS = [
@@ -82,9 +83,12 @@ export default function Onboarding({ state, onDone }: { state: OnboardingState; 
 /* ── Étape 1 : informations (champs verrouillés + autocomplétion) ──────── */
 function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void }) {
   const toast = useToast();
-  const [f, setF] = useState({ first_name: '', last_name: '', phone: '', address: '', siret: '', website: '' });
+  const { me } = useAuth();
+  const [f, setF] = useState({ first_name: '', last_name: '', phone: '', address: '', siret: '', vat_number: '', website: '', billing_email: '' });
+  const [sameEmail, setSameEmail] = useState(true);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const accountEmail = me?.user.email ?? '';
   const inputCls = 'w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none';
 
   // Autocomplétion via la Base Adresse Nationale (data.gouv.fr, gratuite)
@@ -103,7 +107,9 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
     e.preventDefault();
     setBusy(true);
     try {
-      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/profile', f);
+      const r = await api.post<{ step: OnboardingState['step'] }>('/onboarding/profile', {
+        ...f, billing_email: sameEmail ? accountEmail : f.billing_email,
+      });
       onNext(r.step);
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Erreur', 'error');
@@ -143,6 +149,19 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
         <input className={inputCls} placeholder="SIRET (14 chiffres — laissez vide si particulier)"
           inputMode="numeric" pattern="\d{14}" title="14 chiffres, sans espaces" value={f.siret}
           onChange={(e) => setF({ ...f, siret: e.target.value.replace(/\D/g, '').slice(0, 14) })} />
+        <input className={inputCls} placeholder="N° TVA intracommunautaire (FRXX123456789 — optionnel)"
+          pattern="FR[0-9A-Za-z]{2}[0-9]{9}" title="Format : FRXX123456789" maxLength={13} value={f.vat_number}
+          onChange={(e) => setF({ ...f, vat_number: e.target.value.toUpperCase().replace(/\s/g, '').slice(0, 13) })} />
+        <div className="rounded-xl border border-slate-200 p-4">
+          <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+            <input type="checkbox" checked={sameEmail} onChange={(e) => setSameEmail(e.target.checked)} className="h-4 w-4" />
+            Utiliser <span className="font-medium text-slate-800">{accountEmail}</span> pour la facturation
+          </label>
+          {!sameEmail && (
+            <input className={`${inputCls} mt-3`} type="email" placeholder="Email de facturation" required
+              value={f.billing_email} onChange={(e) => setF({ ...f, billing_email: e.target.value.trim() })} />
+          )}
+        </div>
         <div className="flex items-stretch">
           <span className="flex items-center rounded-l-xl border border-r-0 border-slate-300 bg-slate-100 px-3 text-sm text-slate-500">
             https://
@@ -250,25 +269,36 @@ function StepReview() {
   );
 }
 
-/* ── Étape 4 : contrat à signer ────────────────────────────────────────── */
+/* ── Étape 4 : documents à signer (CGV d'abord, puis contrat) ──────────── */
+const SIGN_DOC_LABELS: Record<string, string> = {
+  cgv: 'Conditions Générales de Vente',
+  contrat: "Contrat d'hébergement",
+  devis: 'Devis',
+  autre: 'Document',
+};
+
 function StepContract({ orgId, onNext }: { orgId?: string; onNext: (s: OnboardingState['step']) => void }) {
   const toast = useToast();
-  const [contract, setContract] = useState<Document | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [docs, setDocs] = useState<Document[] | null>(null);
+  const [signing, setSigning] = useState<Document | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const load = () => {
     if (!orgId) return;
     api.get<{ documents: Document[] }>(`/orgs/${orgId}/documents`)
-      .then((r) => setContract(r.documents.find((d) => d.type === 'contrat') ?? null))
-      .finally(() => setLoading(false));
-  }, [orgId]);
-
-  const download = async () => {
-    if (!orgId || !contract) return;
-    const { url } = await api.get<{ url: string }>(`/orgs/${orgId}/documents/${contract.id}/download`);
-    window.open(url, '_blank', 'noreferrer');
+      .then((r) => setDocs(r.documents))
+      .catch(() => setDocs([]));
   };
+  useEffect(load, [orgId]);
+
+  if (!docs) return <Spinner />;
+
+  // CGV d'abord, puis contrat, puis le reste
+  const order: Record<string, number> = { cgv: 0, contrat: 1 };
+  const toSign = docs
+    .filter((d) => d.requires_signature)
+    .sort((a, b) => (order[a.type] ?? 9) - (order[b.type] ?? 9));
+  const contract = toSign.find((d) => d.type === 'contrat' && !d.signed_at);
 
   const uploadSigned = async (file: File) => {
     if (!orgId) return;
@@ -276,37 +306,70 @@ function StepContract({ orgId, onNext }: { orgId?: string; onNext: (s: Onboardin
     try {
       const r = await api.upload<{ step: OnboardingState['step'] }>(`/orgs/${orgId}/documents/signed-contract`, file);
       toast('Contrat signé bien reçu !');
-      onNext(r.step);
+      if (r.step === 'payment') onNext('payment'); else load();
     } catch (err) {
       toast(err instanceof Error ? err.message : "L'envoi a échoué", 'error');
     } finally { setBusy(false); }
   };
 
-  if (loading) return <Spinner />;
-
   return (
-    <Card title="Votre contrat d'hébergement">
-      {!contract ? (
+    <Card title="Vos documents à signer">
+      {toSign.length === 0 ? (
         <p className="text-sm text-slate-500">
-          Zenix prépare votre contrat — il apparaîtra ici très bientôt. Revenez un peu plus tard.
+          Zenix prépare vos documents (CGV et contrat d'hébergement) — ils apparaîtront
+          ici très bientôt. Revenez un peu plus tard.
         </p>
       ) : (
-        <div className="space-y-4">
-          <ol className="space-y-3 text-sm text-slate-600">
-            <li className="flex gap-2"><span className="font-bold text-blue-600">1.</span> Téléchargez et lisez votre contrat.</li>
-            <li className="flex gap-2"><span className="font-bold text-blue-600">2.</span> Imprimez-le ou signez-le électroniquement.</li>
-            <li className="flex gap-2"><span className="font-bold text-blue-600">3.</span> Redéposez la version signée (PDF) ci-dessous.</li>
-          </ol>
-          <button onClick={download}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 px-4 py-3 font-medium text-slate-700 hover:bg-slate-50">
-            <Download className="h-4 w-4" /> Télécharger mon contrat
-          </button>
-          <label className={`flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 ${busy ? 'opacity-50' : ''}`}>
-            <Upload className="h-4 w-4" /> {busy ? 'Envoi…' : 'Déposer le contrat signé (PDF)'}
-            <input type="file" accept="application/pdf" className="hidden" disabled={busy}
-              onChange={(e) => e.target.files?.[0] && uploadSigned(e.target.files[0])} />
-          </label>
+        <div className="space-y-3">
+          <p className="-mt-2 mb-1 text-sm text-slate-500">
+            Signez chaque document en ligne — c'est instantané et ça a valeur de signature.
+          </p>
+          {toSign.map((d) => (
+            <div key={d.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-4">
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-900">{SIGN_DOC_LABELS[d.type] ?? d.filename}</p>
+                <p className="truncate text-xs text-slate-400">{d.filename}</p>
+              </div>
+              {d.signed_at ? (
+                <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800">
+                  <Check className="h-3.5 w-3.5" /> Signé
+                </span>
+              ) : (
+                <button onClick={() => setSigning(d)}
+                  className="shrink-0 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+                  Lire et signer
+                </button>
+              )}
+            </div>
+          ))}
+
+          {contract && (
+            <details className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+              <summary className="cursor-pointer font-medium text-slate-600">
+                Vous préférez signer sur papier ?
+              </summary>
+              <p className="mt-2">
+                Téléchargez le contrat (bouton "Lire et signer" → lecture), imprimez-le,
+                signez-le puis redéposez-le ici en PDF :
+              </p>
+              <label className={`mt-3 flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-100 ${busy ? 'opacity-50' : ''}`}>
+                <Upload className="h-4 w-4" /> {busy ? 'Envoi…' : 'Déposer le contrat signé (PDF)'}
+                <input type="file" accept="application/pdf" className="hidden" disabled={busy}
+                  onChange={(e) => e.target.files?.[0] && uploadSigned(e.target.files[0])} />
+              </label>
+            </details>
+          )}
         </div>
+      )}
+
+      {orgId && (
+        <SignModal
+          orgId={orgId}
+          doc={signing}
+          open={!!signing}
+          onClose={() => setSigning(null)}
+          onSigned={(step) => { if (step === 'payment') onNext('payment'); else load(); }}
+        />
       )}
     </Card>
   );

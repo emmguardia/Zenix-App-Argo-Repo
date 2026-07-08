@@ -64,6 +64,9 @@ export interface AdminDocument {
   filename: string;
   created_at: string;
   uploaded_by_name: string | null;
+  requires_signature: number;
+  signed_at: string | null;
+  signature_name: string | null;
 }
 
 export interface Me {
@@ -113,9 +116,11 @@ export interface Invoice {
 
 export interface Document {
   id: string;
-  type: 'contrat' | 'devis' | 'zip_offboarding' | 'autre';
+  type: 'contrat' | 'contrat_signe' | 'cgv' | 'devis' | 'zip_offboarding' | 'autre';
   filename: string;
   created_at: string;
+  requires_signature: number;
+  signed_at: string | null;
 }
 
 export class ApiError extends Error {

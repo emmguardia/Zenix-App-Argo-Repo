@@ -56,3 +56,9 @@ export async function putObject(r2Key, buffer, contentType) {
 export async function deleteObject(r2Key) {
   await getR2().send(new DeleteObjectCommand({ Bucket: BUCKET(), Key: r2Key }));
 }
+
+/** Lit un objet en mémoire (pour empreinte SHA-256 / tampon de signature). */
+export async function getObjectBuffer(r2Key) {
+  const res = await getR2().send(new GetObjectCommand({ Bucket: BUCKET(), Key: r2Key }));
+  return Buffer.from(await res.Body.transformToByteArray());
+}

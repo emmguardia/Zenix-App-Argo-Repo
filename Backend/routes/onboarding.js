@@ -58,6 +58,8 @@ const profileSchema = z.object({
   phone:      z.string().trim().regex(/^\d{10}$/),
   address:    z.string().trim().min(5).max(1000),
   siret:      z.string().trim().regex(/^\d{14}$/).optional().or(z.literal('')),
+  vat_number: z.string().trim().toUpperCase().regex(/^FR[0-9A-Z]{2}\d{9}$/).optional().or(z.literal('')),
+  billing_email: z.string().trim().email().max(254).optional().or(z.literal('')),
   website:    z.string().trim().max(255)
                 .regex(/^[a-z0-9.-]+\.[a-z]{2,}$/i, 'domaine invalide')
                 .optional().or(z.literal('')),
@@ -69,6 +71,8 @@ const FIELD_LABELS = {
   phone:      'le téléphone (10 chiffres)',
   address:    "l'adresse complète",
   siret:      'le SIRET (14 chiffres, sans espaces)',
+  vat_number: 'le n° de TVA (format FRXX123456789)',
+  billing_email: "l'email de facturation",
   website:    'le site internet (ex. monsite.fr)',
 };
 
@@ -92,11 +96,12 @@ router.post('/profile', async (req, res) => {
     try {
       await conn.beginTransaction();
       await conn.execute(
-        `INSERT INTO organizations (id, name, legal_type, siret, billing_address, linked_domain,
-           contact_first_name, contact_last_name, contact_phone, onboarding_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'plan')`,
+        `INSERT INTO organizations (id, name, legal_type, siret, vat_number, billing_address, billing_email,
+           linked_domain, contact_first_name, contact_last_name, contact_phone, onboarding_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'plan')`,
         [id, `${d.first_name} ${d.last_name}`, d.siret ? 'entreprise' : 'particulier',
-         d.siret || null, d.address, d.website || null, d.first_name, d.last_name, d.phone]
+         d.siret || null, d.vat_number || null, d.address, d.billing_email || null,
+         d.website || null, d.first_name, d.last_name, d.phone]
       );
       await conn.execute('INSERT INTO memberships (user_id, organization_id) VALUES (?, ?)', [req.user.uid, id]);
       await conn.commit();
@@ -112,11 +117,14 @@ router.post('/profile', async (req, res) => {
     const isExisting = org.status === 'active' && org.stripe_subscription_id;
     const next = isExisting ? 'done' : (org.plan ? 'review' : 'plan');
     await pool.execute(
-      `UPDATE organizations SET siret = COALESCE(NULLIF(?, ''), siret), billing_address = ?,
+      `UPDATE organizations SET siret = COALESCE(NULLIF(?, ''), siret),
+         vat_number = COALESCE(NULLIF(?, ''), vat_number), billing_address = ?,
+         billing_email = COALESCE(NULLIF(?, ''), billing_email),
          linked_domain = COALESCE(NULLIF(?, ''), linked_domain),
          contact_first_name = ?, contact_last_name = ?, contact_phone = ?, onboarding_status = ?
        WHERE id = ?`,
-      [d.siret || '', d.address, d.website || '', d.first_name, d.last_name, d.phone, next, org.id]
+      [d.siret || '', d.vat_number || '', d.address, d.billing_email || '',
+       d.website || '', d.first_name, d.last_name, d.phone, next, org.id]
     );
     org.onboarding_status = next;
   }

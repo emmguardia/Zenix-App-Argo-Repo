@@ -168,6 +168,7 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
   const [busy, setBusy] = useState(false);
   const [documents, setDocuments] = useState<AdminDocument[] | null>(null);
   const [docType, setDocType] = useState('contrat');
+  const [mustSign, setMustSign] = useState(true);
   const [confirmLaunch, setConfirmLaunch] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleteText, setDeleteText] = useState('');
@@ -287,9 +288,17 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
                         <span className={`mr-2 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
                           d.type === 'contrat_signe' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
                         }`}>{DOC_LABELS[d.type] ?? d.type}</span>
+                        {d.requires_signature ? (
+                          d.signed_at
+                            ? <span className="mr-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-emerald-700">Signé</span>
+                            : <span className="mr-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-amber-700">À signer</span>
+                        ) : null}
                         {d.filename}
                       </p>
-                      <p className="text-xs text-slate-400">{fmtDate(d.created_at)}{d.uploaded_by_name ? ` · par ${d.uploaded_by_name}` : ''}</p>
+                      <p className="text-xs text-slate-400">
+                        {fmtDate(d.created_at)}{d.uploaded_by_name ? ` · par ${d.uploaded_by_name}` : ''}
+                        {d.signed_at && ` · signé le ${fmtDate(d.signed_at)}${d.signature_name ? ` (${d.signature_name})` : ''}`}
+                      </p>
                     </div>
                     <div className="flex shrink-0 gap-1">
                       <button title="Télécharger"
@@ -310,7 +319,7 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
                 ))}
               </ul>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select className={`${inputCls} !w-auto`} value={docType} onChange={(e) => setDocType(e.target.value)}>
                 <option value="contrat">Contrat</option>
                 <option value="cgv">CGV</option>
@@ -318,12 +327,16 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
                 <option value="zip_offboarding">Export fin de contrat</option>
                 <option value="autre">Autre</option>
               </select>
-              <label className={`flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 ${busy ? 'opacity-50' : ''}`}>
+              <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-sm text-slate-600">
+                <input type="checkbox" checked={mustSign} onChange={(e) => setMustSign(e.target.checked)} className="h-4 w-4" />
+                À faire signer
+              </label>
+              <label className={`flex min-w-[200px] flex-1 cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 ${busy ? 'opacity-50' : ''}`}>
                 <Upload className="h-4 w-4" /> Déposer un fichier (PDF/ZIP)
                 <input type="file" accept="application/pdf,application/zip" className="hidden" disabled={busy}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
-                    if (file) run(() => api.upload(`/admin/orgs/${org.id}/documents`, file, { type: docType }), 'Document déposé');
+                    if (file) run(() => api.upload(`/admin/orgs/${org.id}/documents`, file, { type: docType, requires_signature: mustSign ? '1' : '0' }), 'Document déposé');
                     e.target.value = '';
                   }} />
               </label>
@@ -387,7 +400,9 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
     contact_last_name:  org.contact_last_name ?? '',
     contact_phone:      org.contact_phone ?? '',
     billing_address:    org.billing_address ?? '',
+    billing_email:      (org as unknown as { billing_email?: string }).billing_email ?? '',
     siret:              org.siret ?? '',
+    vat_number:         org.vat_number ?? '',
     linked_domain:      org.linked_domain ?? '',
     name:               org.name,
     plan:               org.plan ?? 'start',
@@ -402,6 +417,8 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
       await api.patch(`/admin/orgs/${org.id}`, {
         ...f,
         siret: f.siret || null,
+        vat_number: f.vat_number || null,
+        billing_email: f.billing_email || null,
         linked_domain: f.linked_domain || null,
         custom_price_id: f.custom_price_id || null,
         contact_phone: f.contact_phone || null,
@@ -441,6 +458,8 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
         {field('Nom du contact', 'contact_last_name', { maxLength: 30 })}
         {field('Téléphone', 'contact_phone', { maxLength: 10, inputMode: 'numeric' })}
         {field('SIRET', 'siret', { maxLength: 14, inputMode: 'numeric' })}
+        {field('N° TVA (FRXX123456789)', 'vat_number', { maxLength: 13 })}
+        {field('Email de facturation', 'billing_email', { type: 'email' })}
         <div className="sm:col-span-2">{field('Adresse de facturation', 'billing_address')}</div>
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-500">Formule</label>
