@@ -123,6 +123,23 @@ export interface Document {
   signed_at: string | null;
 }
 
+export interface Message {
+  id: string;
+  sender: 'client' | 'admin';
+  body: string;
+  created_at: string;
+}
+
+export interface Conversation {
+  id: string;
+  name: string;
+  last_body: string | null;
+  last_at: string | null;
+  last_sender: 'client' | 'admin' | null;
+  unread: number;
+  seen: boolean;
+}
+
 export class ApiError extends Error {
   status: number;
   constructor(status: number, message: string) {

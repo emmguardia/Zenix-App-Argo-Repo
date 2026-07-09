@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Check, CheckCheck, Clock, Gift, Paperclip, Plus, X } from 'lucide-react';
+import { Check, CheckCheck, Clock, Gift, Paperclip, Plus, Trash2, X } from 'lucide-react';
 import { api, type AdminOrganization, type AdminTicket } from '../../api';
 import { ADMIN_TICKET_STATUS, Badge, Card, ErrorNote, fmtDate, Modal, Spinner, useToast } from '../../ui';
 
@@ -21,6 +21,7 @@ export default function AdminTickets() {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [toDelete, setToDelete] = useState<AdminTicket | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -144,12 +145,45 @@ export default function AdminTickets() {
                       <CheckCheck className="h-3.5 w-3.5" /> Terminé
                     </button>
                   )}
+                  <button disabled={busy === t.id}
+                    onClick={() => {
+                      if (t.credit_grant_id) setToDelete(t);
+                      else act(t.id, () => api.delete(`/admin/tickets/${t.id}`), 'Demande supprimée');
+                    }}
+                    className={`${btnCls} bg-white text-slate-400 ring-1 ring-slate-200 hover:bg-slate-50 hover:text-red-500`}>
+                    <Trash2 className="h-3.5 w-3.5" /> Supprimer
+                  </button>
                 </div>
               </div>
             </Card>
           ))}
         </div>
       )}
+
+      <Modal open={!!toDelete} title={`Supprimer « ${toDelete?.title ?? ''} » ?`} onClose={() => setToDelete(null)}>
+        <div className="space-y-4">
+          <p className="rounded-xl bg-amber-50 p-4 text-sm text-amber-800">
+            Cette demande a <strong>consommé un crédit</strong> : en la supprimant,
+            le crédit sera <strong>recrédité au client</strong> (sur son lot d'origine).
+            La suppression est définitive.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => setToDelete(null)}
+              className="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 font-medium text-slate-700 hover:bg-slate-50">
+              Annuler
+            </button>
+            <button
+              onClick={() => {
+                const t = toDelete!;
+                setToDelete(null);
+                act(t.id, () => api.delete(`/admin/tickets/${t.id}`), 'Demande supprimée — crédit recrédité');
+              }}
+              className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 font-semibold text-white hover:bg-red-700">
+              Supprimer
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

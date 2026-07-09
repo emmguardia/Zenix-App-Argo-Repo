@@ -9,9 +9,11 @@ import Dashboard from './pages/Dashboard';
 import Tickets from './pages/Tickets';
 import Invoices from './pages/Invoices';
 import Documents from './pages/Documents';
+import Messages from './pages/Messages';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import AdminOrgs from './pages/admin/AdminOrgs';
 import AdminTickets from './pages/admin/AdminTickets';
+import AdminMessages from './pages/admin/AdminMessages';
 import { Spinner, ToastProvider } from './ui';
 
 /* Admin : interface 100% admin, aucune page client */
@@ -22,6 +24,7 @@ function AdminApp() {
         <Route path="/" element={<AdminDashboard />} />
         <Route path="/clients" element={<AdminOrgs />} />
         <Route path="/demandes" element={<AdminTickets />} />
+        <Route path="/messages" element={<AdminMessages />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
@@ -52,6 +55,7 @@ function ClientApp() {
         <Route path="/modifications" element={<Tickets />} />
         <Route path="/factures" element={<Invoices />} />
         <Route path="/documents" element={<Documents />} />
+        <Route path="/messages" element={<Messages />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

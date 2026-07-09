@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { BarChart3, Building2, FileText, Home, Inbox, LogOut, Pencil, Receipt, Users } from 'lucide-react';
+import { BarChart3, Building2, FileText, Home, Inbox, LogOut, MessageCircle, Pencil, Receipt, Users } from 'lucide-react';
 import { useAuth } from '../auth';
 
 const linkCls = ({ isActive }: { isActive: boolean }) =>
@@ -63,6 +63,9 @@ export default function Layout() {
               <NavLink to="/demandes" className={linkCls}>
                 <Inbox className="h-4 w-4" /> Demandes
               </NavLink>
+              <NavLink to="/messages" className={linkCls}>
+                <MessageCircle className="h-4 w-4" /> Messages
+              </NavLink>
             </>
           ) : (
             <>
@@ -77,6 +80,9 @@ export default function Layout() {
               </NavLink>
               <NavLink to="/documents" className={linkCls}>
                 <FileText className="h-4 w-4" /> Mes documents
+              </NavLink>
+              <NavLink to="/messages" className={linkCls}>
+                <MessageCircle className="h-4 w-4" /> Messages
               </NavLink>
             </>
           )}

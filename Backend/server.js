@@ -9,6 +9,7 @@ import stripeWebhookRouter from './routes/stripe-webhook.js';
 import adminOrgsRouter from './routes/admin/orgs.js';
 import adminTicketsRouter from './routes/admin/tickets.js';
 import adminStripeRouter from './routes/admin/stripe.js';
+import adminMessagesRouter from './routes/admin/messages.js';
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -37,6 +38,7 @@ app.use('/api/orgs', orgsRouter);
 app.use('/api/admin/orgs',    adminOrgsRouter);
 app.use('/api/admin/tickets', adminTicketsRouter);
 app.use('/api/admin/stripe',  adminStripeRouter);
+app.use('/api/admin/messages', adminMessagesRouter);
 
 /* ── 404 ───────────────────────────────────────────────────────────────── */
 app.use((_req, res) => {

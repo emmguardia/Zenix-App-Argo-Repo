@@ -89,7 +89,7 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const accountEmail = me?.user.email ?? '';
-  const inputCls = 'w-full rounded-xl border border-slate-300 px-4 py-3 text-sm focus:border-blue-500 focus:outline-none';
+  const inputCls = 'w-full rounded-xl border border-slate-300 px-4 py-3.5 text-base focus:border-blue-500 focus:outline-none';
 
   // Autocomplétion via la Base Adresse Nationale (data.gouv.fr, gratuite)
   const onAddress = (value: string) => {
@@ -117,8 +117,19 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
   };
 
   return (
-    <Card title="Bienvenue ! Faisons connaissance">
-      <p className="mb-4 -mt-2 text-sm text-slate-500">Ces informations serviront pour votre contrat et vos factures.</p>
+    <div className="space-y-5">
+      <div className="text-center">
+        <h2 className="text-2xl font-bold text-slate-900">Bienvenue chez Zenix 👋</h2>
+        <p className="mx-auto mt-2 max-w-md text-base text-slate-600">
+          Cet espace, c'est <strong>tout pour votre site au même endroit</strong> :
+          vos demandes de modification, vos factures et vos documents.
+        </p>
+        <p className="mt-2 text-base font-semibold text-slate-700">
+          On commence ? 2 minutes, promis.
+        </p>
+      </div>
+    <Card title="Vos informations">
+      <p className="mb-4 -mt-2 text-base text-slate-500">Elles serviront pour votre contrat et vos factures.</p>
       <form onSubmit={submit} className="space-y-3">
         <div className="grid grid-cols-2 gap-3">
           <input className={inputCls} placeholder="Prénom" required maxLength={20} value={f.first_name}
@@ -171,11 +182,12 @@ function StepInfos({ onNext }: { onNext: (s: OnboardingState['step']) => void })
             onChange={(e) => setF({ ...f, website: e.target.value.replace(/^https?:\/\//i, '').replace(/\s/g, '') })} />
         </div>
         <button type="submit" disabled={busy}
-          className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-          {busy ? 'Enregistrement…' : 'Continuer'}
+          className="w-full rounded-xl bg-blue-600 px-4 py-4 text-lg font-bold text-white hover:bg-blue-700 disabled:opacity-50">
+          {busy ? 'Enregistrement…' : 'Continuer →'}
         </button>
       </form>
     </Card>
+    </div>
   );
 }
 
@@ -197,41 +209,53 @@ function StepPlan({ onNext }: { onNext: (s: OnboardingState['step']) => void }) 
     }
   };
 
-  const toggleCls = (active: boolean) =>
-    `rounded-lg px-4 py-1.5 text-sm font-medium ${active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`;
+  const optionCls = (active: boolean) =>
+    `flex-1 rounded-2xl border-2 px-4 py-4 text-center text-base font-bold transition-all ${
+      active
+        ? 'border-blue-600 bg-blue-600 text-white shadow-md'
+        : 'border-slate-300 bg-white text-slate-700 hover:border-blue-400'
+    }`;
 
   return (
-    <div className="space-y-3">
-      <h2 className="text-center text-lg font-bold text-slate-900">Choisissez votre offre</h2>
-      <p className="-mt-1 text-center text-sm text-slate-500">Hébergement, sécurité et sauvegardes toujours inclus.</p>
+    <div className="space-y-4">
+      <h2 className="text-center text-2xl font-bold text-slate-900">Choisissez votre offre</h2>
+      <p className="-mt-2 text-center text-base text-slate-500">Hébergement, sécurité et sauvegardes toujours inclus.</p>
 
-      <div className="mx-auto flex w-fit rounded-xl bg-slate-200 p-1">
-        <button onClick={() => setTier('standard')} className={toggleCls(tier === 'standard')}>
-          Entreprise / Indépendant
-        </button>
-        <button onClick={() => setTier('asso')} className={toggleCls(tier === 'asso')}>
-          Association <span className="font-bold text-emerald-600">· tarif réduit</span>
-        </button>
+      <div>
+        <p className="mb-2 text-center text-sm font-bold uppercase tracking-wide text-slate-400">Vous êtes… (cliquez)</p>
+        <div className="flex gap-3">
+          <button onClick={() => setTier('standard')} className={optionCls(tier === 'standard')}>
+            Entreprise<span className="block text-sm font-normal opacity-80">ou indépendant</span>
+          </button>
+          <button onClick={() => setTier('asso')} className={optionCls(tier === 'asso')}>
+            Association<span className="block text-sm font-normal opacity-80">tarif réduit ✓</span>
+          </button>
+        </div>
+        {tier === 'asso' && (
+          <p className="mt-2 text-center text-sm text-slate-500">
+            Grille solidaire réservée aux associations — Zenix vérifiera votre statut à la validation.
+          </p>
+        )}
       </div>
-      {tier === 'asso' && (
-        <p className="text-center text-xs text-slate-500">
-          Grille solidaire réservée aux associations — Zenix vérifiera votre statut à la validation.
-        </p>
-      )}
 
-      <div className="mx-auto flex w-fit rounded-xl bg-slate-200 p-1">
-        <button onClick={() => setInterval('monthly')} className={toggleCls(interval === 'monthly')}>
-          Mensuel, sans engagement
-        </button>
-        <button onClick={() => setInterval('annual')} className={toggleCls(interval === 'annual')}>
-          Engagement 1 an <span className="font-bold text-emerald-600">· 1 mois offert</span>
-        </button>
+      <div>
+        <p className="mb-2 text-center text-sm font-bold uppercase tracking-wide text-slate-400">Votre formule de paiement (cliquez)</p>
+        <div className="flex gap-3">
+          <button onClick={() => setInterval('monthly')} className={optionCls(interval === 'monthly')}>
+            Mensuel<span className="block text-sm font-normal opacity-80">sans engagement</span>
+          </button>
+          <button onClick={() => setInterval('annual')} className={optionCls(interval === 'annual')}>
+            Engagement 1 an<span className="block text-sm font-normal opacity-80">1 mois offert 🎁</span>
+          </button>
+        </div>
+        {interval === 'annual' && (
+          <p className="mt-2 text-center text-sm text-slate-500">
+            Vous restez prélevé <strong>mois par mois</strong> (rien à avancer) — et le <strong>12ᵉ mois est offert</strong> (0 €).
+          </p>
+        )}
       </div>
-      {interval === 'annual' && (
-        <p className="text-center text-xs text-slate-500">
-          Vous restez prélevé mois par mois (rien à avancer) — et le 12ᵉ mois est offert (0 €).
-        </p>
-      )}
+
+      <p className="pt-1 text-center text-sm font-bold uppercase tracking-wide text-slate-400">Puis choisissez votre offre (cliquez)</p>
 
       {(tier === 'asso' ? [ESSENTIEL, ...PLANS] : PLANS).map((p) => (
         <button key={p.key} onClick={() => choose(p.key)} disabled={!!busy}
@@ -464,7 +488,7 @@ function PaymentForm({ orgId, onNext }: { orgId: string; onNext: (s: OnboardingS
     <form onSubmit={pay} className="space-y-4">
       <PaymentElement />
       <button type="submit" disabled={busy || !stripe}
-        className="w-full rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+        className="w-full rounded-xl bg-blue-600 px-4 py-4 text-lg font-bold text-white hover:bg-blue-700 disabled:opacity-50">
         {busy ? 'Traitement…' : "S'abonner — 0 € aujourd'hui"}
       </button>
       <p className="text-center text-xs text-slate-400">

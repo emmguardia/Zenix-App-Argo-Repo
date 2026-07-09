@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* Base plus grande : tout est en rem, donc tout grossit d'un cran.
+   Pensé pour des clients peu à l'aise avec l'informatique. */
+html {
+  font-size: 17px;
+}

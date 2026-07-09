@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { getPool } from '../../config/database.js';
 import { requireAdmin } from '../../middleware/auth.js';
 import { refundCredit, createGrant, consumeCredit } from '../../utils/credits.js';
-import { signedDownloadUrl } from '../../config/r2.js';
+import { signedDownloadUrl, deleteObject } from '../../config/r2.js';
 import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
 
@@ -156,6 +156,33 @@ router.post('/:id/decision', async (req, res) => {
   await audit('admin', req.user.uid, `ticket.${decision}`, 'ticket', ticket.id, { org: ticket.org_name });
   notifyDiscord('🎫 Décision ticket', `**${ticket.org_name}** — "${ticket.title}" → ${decision}`);
   res.json({ decided: true, decision });
+});
+
+/* ── DELETE /api/admin/tickets/:id — suppression à tout stade ──────────────
+ * Si un crédit avait été décompté, il est recrédité au client (le front
+ * demande confirmation dans ce cas). Pièce jointe R2 purgée. */
+router.delete('/:id', async (req, res) => {
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT t.id, t.title, t.credit_grant_id, o.name AS org_name FROM tickets t
+     JOIN organizations o ON o.id = t.organization_id WHERE t.id = ? LIMIT 1`,
+    [req.params.id]
+  );
+  const ticket = rows[0];
+  if (!ticket) return res.status(404).json({ error: 'Ticket introuvable' });
+
+  if (ticket.credit_grant_id) await refundCredit(ticket.credit_grant_id);
+
+  const [atts] = await pool.execute('SELECT r2_key FROM ticket_attachments WHERE ticket_id = ?', [ticket.id]);
+  for (const { r2_key } of atts) {
+    try { await deleteObject(r2_key); } catch (e) { console.warn('[admin] purge R2:', e.message); }
+  }
+
+  await pool.execute('DELETE FROM tickets WHERE id = ?', [ticket.id]);
+  await audit('admin', req.user.uid, 'ticket.delete', 'ticket', ticket.id, {
+    org: ticket.org_name, title: ticket.title, creditRefunded: !!ticket.credit_grant_id,
+  });
+  res.json({ deleted: true, creditRefunded: !!ticket.credit_grant_id });
 });
 
 /* ── POST /api/admin/tickets/:id/complete — validé → terminé ───────────── */

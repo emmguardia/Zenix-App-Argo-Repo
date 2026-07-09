@@ -416,4 +416,33 @@ router.post('/:orgId/payment/card-saved', async (req, res) => {
   res.json({ saved: true });
 });
 
+/* ═══ Messagerie (1 conversation par organisation) ════════════════════════ */
+
+/* Ouvrir la conversation = messages lus (horodatage visible par l'admin seul) */
+router.get('/:orgId/messages', async (req, res) => {
+  const [messages] = await getPool().execute(
+    'SELECT id, sender, body, created_at FROM messages WHERE organization_id = ? ORDER BY created_at ASC LIMIT 500',
+    [req.org.id]
+  );
+  await getPool().execute('UPDATE organizations SET client_last_read_at = NOW() WHERE id = ?', [req.org.id]);
+  // Aucune information de lecture n'est renvoyée au client
+  res.json({ messages });
+});
+
+const messageSchema = z.object({ body: z.string().trim().min(1).max(2000) });
+
+router.post('/:orgId/messages', ticketLimiter, async (req, res) => {
+  const parsed = messageSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Message vide ou trop long (2000 caractères max)' });
+
+  const id = randomUUID();
+  await getPool().execute(
+    "INSERT INTO messages (id, organization_id, sender, sender_id, body) VALUES (?, ?, 'client', ?, ?)",
+    [id, req.org.id, req.user.uid, parsed.data.body]
+  );
+  notifyDiscord('💬 Nouveau message client',
+    `**${req.org.name}** — ${parsed.data.body.slice(0, 180)}${parsed.data.body.length > 180 ? '…' : ''}`);
+  res.status(201).json({ id });
+});
+
 export default router;
