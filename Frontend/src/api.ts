@@ -116,7 +116,7 @@ export interface Invoice {
 
 export interface Document {
   id: string;
-  type: 'contrat' | 'contrat_signe' | 'cgv' | 'devis' | 'zip_offboarding' | 'autre';
+  type: 'contrat' | 'contrat_signe' | 'cgv' | 'devis' | 'facture' | 'zip_offboarding' | 'autre';
   filename: string;
   created_at: string;
   requires_signature: number;
