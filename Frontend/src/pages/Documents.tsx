@@ -25,7 +25,8 @@ export default function Documents() {
   const load = useCallback(() => {
     if (!currentOrg) { setLoading(false); return; }
     api.get<{ documents: Document[] }>(`/orgs/${currentOrg.id}/documents`)
-      .then((r) => setDocuments(r.documents))
+      // Les factures déposées vivent dans "Mes factures", pas ici
+      .then((r) => setDocuments(r.documents.filter((d) => d.type !== 'facture')))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [currentOrg]);

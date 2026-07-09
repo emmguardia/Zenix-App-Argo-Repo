@@ -158,7 +158,7 @@ const uploadDoc = multer({
   fileFilter: (_req, file, cb) => cb(null, ['application/pdf', 'application/zip'].includes(file.mimetype)),
 });
 
-const DOC_TYPES = ['contrat', 'cgv', 'devis', 'zip_offboarding', 'autre'];
+const DOC_TYPES = ['contrat', 'cgv', 'devis', 'facture', 'zip_offboarding', 'autre'];
 
 /* ── GET /api/admin/orgs/:id/documents ─────────────────────────────────── */
 router.get('/:id/documents', async (req, res) => {

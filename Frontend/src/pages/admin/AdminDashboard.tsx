@@ -135,7 +135,8 @@ export default function AdminDashboard() {
         {stats.lastPayments.length === 0 ? (
           <p className="py-4 text-center text-sm text-slate-400">Aucun paiement pour l'instant.</p>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase text-slate-400">
                 <th className="pb-2">Client</th>
@@ -159,6 +160,7 @@ export default function AdminDashboard() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Card>
     </div>

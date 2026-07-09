@@ -16,7 +16,7 @@ const ONBOARDING_LABELS: Record<string, { label: string; cls: string }> = {
 
 const DOC_LABELS: Record<string, string> = {
   contrat: 'Contrat', contrat_signe: 'Contrat SIGNÉ', cgv: 'CGV',
-  devis: 'Devis', zip_offboarding: 'Export', autre: 'Autre',
+  devis: 'Devis', facture: 'Facture', zip_offboarding: 'Export', autre: 'Autre',
 };
 
 export default function AdminOrgs() {
@@ -324,6 +324,7 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
                 <option value="contrat">Contrat</option>
                 <option value="cgv">CGV</option>
                 <option value="devis">Devis</option>
+                <option value="facture">Facture (visible dans "Mes factures")</option>
                 <option value="zip_offboarding">Export fin de contrat</option>
                 <option value="autre">Autre</option>
               </select>
