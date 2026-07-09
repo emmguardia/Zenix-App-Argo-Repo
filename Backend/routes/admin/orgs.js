@@ -8,6 +8,7 @@ import { requireAdmin } from '../../middleware/auth.js';
 import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
 import { putObject, deleteObject, signedDownloadUrl } from '../../config/r2.js';
+import { emailOrgMembers } from '../../utils/email.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -195,7 +196,12 @@ router.post('/:id/documents', uploadDoc.single('file'), async (req, res) => {
     [docId, org.id, type, r2Key, filename, req.user.uid, requiresSignature]
   );
 
-  // Contrat déposé pendant l'étape contrat → le client est prévenu côté UI
+  // Document à signer = email au client (une des rares notifs "nécessaires")
+  if (requiresSignature) {
+    emailOrgMembers(org.id, 'Un document attend votre signature',
+      `« ${filename} » est disponible dans votre espace client Zenix. Connectez-vous pour le lire et le signer en ligne — cela ne prend qu'une minute.`);
+  }
+
   await audit('admin', req.user.uid, 'document.upload', 'document', docId, { org: org.name, type });
   res.status(201).json({ id: docId });
 });

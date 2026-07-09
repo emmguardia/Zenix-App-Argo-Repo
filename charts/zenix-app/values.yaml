@@ -41,6 +41,9 @@ backend:
     STRIPE_PRICE_PRO_ASSO: "price_1TpwJ22XjKwHiB5JEIjnFgSc"
     # Coupon 100% "une fois" appliqué automatiquement au 11e paiement (engagement 1 an)
     STRIPE_COUPON_FREE_MONTH: "zenix-12e-mois-offert"
+    # Emails transactionnels (email-service du cluster) — strict nécessaire uniquement
+    EMAIL_SERVICE_URL: "http://email-service.email-service.svc.cluster.local:8080"
+    EMAIL_TEMPLATE_ID: "zenix-app-notification"
     # Clé publique Stripe (pk_test_... — PAS un secret, Dashboard → Clés API)
     STRIPE_PUBLISHABLE_KEY: "pk_test_51RGyw32XjKwHiB5J1a4wvTeBhIrgbiyPQUdLJtV4ZMdwh1VdIJMJcgv4UT2roHeixiHxaEdFCxt4XfvcJsJtTWSh00GQTr1ooF"
   resources:

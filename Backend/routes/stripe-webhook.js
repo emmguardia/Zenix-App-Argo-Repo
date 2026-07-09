@@ -4,6 +4,7 @@ import { getStripe } from '../config/stripe.js';
 import { planCredits, createGrant, processDeferredTickets } from '../utils/credits.js';
 import { audit } from '../utils/audit.js';
 import { notifyDiscord } from '../utils/discord.js';
+import { emailOrgMembers } from '../utils/email.js';
 
 const router = Router();
 
@@ -43,8 +44,13 @@ async function onInvoicePaid(invoice) {
 
   if (org.status !== 'active') await setOrgStatus(org.id, 'active');
 
-  // Tickets reportés → retour chez le client pour re-confirmation
+  // Tickets reportés → retour chez le client pour re-confirmation (+ email,
+  // sinon le client ne sait pas que sa demande l'attend)
   const deferred = await processDeferredTickets(org.id);
+  if (deferred > 0) {
+    emailOrgMembers(org.id, 'Une demande attend votre confirmation',
+      'Une demande de modification mise de côté le mois dernier est de retour dans votre espace client Zenix. Connectez-vous pour la confirmer ou l\'annuler.');
+  }
 
   // Engagement 1 an : au 11e paiement, coupon 100% "une fois" → 12e mois à 0 €
   let freeMonthApplied = false;
@@ -88,6 +94,8 @@ async function onInvoicePaymentFailed(invoice) {
   await audit('system', null, 'payment.failed', 'organization', org.id, {
     invoice: invoice.id, attempt: invoice.attempt_count,
   });
+  emailOrgMembers(org.id, 'Problème de paiement',
+    'Le prélèvement de votre abonnement Zenix n\'a pas pu être effectué. Votre site reste en ligne — vérifiez votre carte bancaire depuis votre espace client, ou répondez-nous via la messagerie.');
   notifyDiscord(
     '🔴 Échec de prélèvement',
     `**${org.name}** — ${(invoice.total / 100).toFixed(2)} € (tentative ${invoice.attempt_count})\n` +

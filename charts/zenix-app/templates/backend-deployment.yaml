@@ -74,6 +74,16 @@ spec:
           value: {{ .Values.backend.env.STRIPE_PRICE_PRO_ASSO | quote }}
         - name: STRIPE_COUPON_FREE_MONTH
           value: {{ .Values.backend.env.STRIPE_COUPON_FREE_MONTH | quote }}
+        - name: EMAIL_SERVICE_URL
+          value: {{ .Values.backend.env.EMAIL_SERVICE_URL | quote }}
+        - name: EMAIL_TEMPLATE_ID
+          value: {{ .Values.backend.env.EMAIL_TEMPLATE_ID | quote }}
+        - name: EMAIL_JWT_PRIVATE_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.backend.secretName }}
+              key: email-jwt-private-key
+              optional: true
         - name: DB_HOST
           valueFrom:
             secretKeyRef:
