@@ -30,6 +30,7 @@ export async function sendClientEmail(toEmail, toName, title, message) {
         to_email:    toEmail,
         to_name:     toName || '',
         project:     'enzo',
+        subject:     `${title} - Zenix Web`,
         variables: {
           title,
           message,
