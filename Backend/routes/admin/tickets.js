@@ -59,16 +59,22 @@ router.post('/', async (req, res) => {
 
   const ticketId = randomUUID();
   const when = d.date || null; // NULL → NOW() par défaut
-  await pool.execute(
-    `INSERT INTO tickets (id, organization_id, created_by, credit_grant_id, title, description, status,
-       created_at, decided_at, completed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?,
-       COALESCE(?, NOW()),
-       CASE WHEN ? IN ('valide', 'termine') THEN COALESCE(?, NOW()) ELSE NULL END,
-       CASE WHEN ? = 'termine' THEN COALESCE(?, NOW()) ELSE NULL END)`,
-    [ticketId, d.organization_id, req.user.uid, grantId, d.title, d.description || '(saisie manuelle)',
-     d.status, when, d.status, when, d.status, when]
-  );
+  try {
+    await pool.execute(
+      `INSERT INTO tickets (id, organization_id, created_by, credit_grant_id, title, description, status,
+         created_at, decided_at, completed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?,
+         COALESCE(?, NOW()),
+         CASE WHEN ? IN ('valide', 'termine') THEN COALESCE(?, NOW()) ELSE NULL END,
+         CASE WHEN ? = 'termine' THEN COALESCE(?, NOW()) ELSE NULL END)`,
+      [ticketId, d.organization_id, req.user.uid, grantId, d.title, d.description || '(saisie manuelle)',
+       d.status, when, d.status, when, d.status, when]
+    );
+  } catch (e) {
+    // Pas de ticket créé → le crédit éventuellement décompté repart d'où il vient
+    if (grantId) await refundCredit(grantId).catch((err) => console.error('[admin] recrédit échoué:', err.message));
+    throw e;
+  }
 
   await audit('admin', req.user.uid, 'ticket.manual-create', 'ticket', ticketId, {
     org: orgs[0].name, status: d.status, date: d.date || 'auj.', creditConsumed: !!grantId,

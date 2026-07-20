@@ -195,9 +195,13 @@ jobs:
           sed -i "s|  image: ghcr.io/.*zenix-app-back.*|  image: ${BACKEND_IMAGE}|" "$VALUES_PATH"
           sed -i "s|  image: ghcr.io/.*zenix-app-front.*|  image: ${FRONTEND_IMAGE}|" "$VALUES_PATH"
 
+          # appVersion du chart aligné sur la version applicative
+          CHART_PATH="charts/zenix-app/Chart.yaml"
+          sed -i "s|^appVersion:.*|appVersion: \"${TAG#v}\"|" "$CHART_PATH"
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add version.txt "$VALUES_PATH"
+          git add version.txt "$VALUES_PATH" "$CHART_PATH"
 
           if git diff --staged --quiet; then
             echo "Helm values already up to date, skip commit"

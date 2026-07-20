@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { getPool } from '../../config/database.js';
 import { getStripe, planPrice, priceToPlan } from '../../config/stripe.js';
 import { requireAdmin } from '../../middleware/auth.js';
+import { singleUpload } from '../../middleware/upload.js';
 import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
 import { putObject, deleteObject, signedDownloadUrl } from '../../config/r2.js';
@@ -153,10 +153,10 @@ router.delete('/:id', async (req, res) => {
 
 /* ═══ Documents (dépôt / suppression / téléchargement) ════════════════════ */
 
-const uploadDoc = multer({
-  storage: multer.memoryStorage(),
-  limits:  { fileSize: 15 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => cb(null, ['application/pdf', 'application/zip'].includes(file.mimetype)),
+const uploadDoc = singleUpload({
+  mimetypes: ['application/pdf', 'application/zip'],
+  maxMb: 15,
+  label: 'PDF ou ZIP',
 });
 
 const DOC_TYPES = ['contrat', 'cgv', 'devis', 'facture', 'zip_offboarding', 'autre'];
@@ -174,7 +174,7 @@ router.get('/:id/documents', async (req, res) => {
 });
 
 /* ── POST /api/admin/orgs/:id/documents — dépôt (PDF/ZIP, 15 Mo) ────────── */
-router.post('/:id/documents', uploadDoc.single('file'), async (req, res) => {
+router.post('/:id/documents', uploadDoc, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Fichier PDF ou ZIP requis (15 Mo max)' });
   const type = DOC_TYPES.includes(req.body.type) ? req.body.type : 'autre';
 

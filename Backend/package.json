@@ -11,6 +11,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.js",
+    "test": "node --experimental-test-module-mocks --test",
     "audit": "npm audit --audit-level=high"
   },
   "dependencies": {

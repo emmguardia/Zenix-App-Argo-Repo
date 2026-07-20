@@ -20,6 +20,22 @@ function getR2() {
 const BUCKET = () => process.env.R2_BUCKET;
 
 /**
+ * Content-Disposition : repli ASCII (accents translittérés) + nom UTF-8
+ * complet en filename* (RFC 5987) — sinon « Devis février.pdf » se
+ * télécharge en « Devis%20f%C3%A9vrier.pdf ».
+ */
+export function contentDisposition(filename) {
+  const ascii = filename
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\x20-\x7e]/g, '_')
+    .replace(/["\\]/g, '_');
+  const utf8 = encodeURIComponent(filename)
+    .replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`;
+}
+
+/**
  * URL signée de téléchargement, courte durée (5 min).
  * ⚠️ L'appartenance du document à l'organisation DOIT être vérifiée
  * par l'appelant AVANT de signer (anti-IDOR).
@@ -28,7 +44,7 @@ export async function signedDownloadUrl(r2Key, filename) {
   const cmd = new GetObjectCommand({
     Bucket: BUCKET(),
     Key:    r2Key,
-    ResponseContentDisposition: `attachment; filename="${encodeURIComponent(filename)}"`,
+    ResponseContentDisposition: contentDisposition(filename),
   });
   return getSignedUrl(getR2(), cmd, { expiresIn: 300 });
 }

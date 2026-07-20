@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import multer from 'multer';
 import { createHash, randomUUID } from 'crypto';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { getPool } from '../config/database.js';
 import { getStripe } from '../config/stripe.js';
-import { putObject, getObjectBuffer } from '../config/r2.js';
+import { putObject, getObjectBuffer, deleteObject } from '../config/r2.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireOrgAccess } from '../middleware/orgAccess.js';
+import { singleUpload } from '../middleware/upload.js';
 import { ticketLimiter } from '../config/security.js';
-import { getBalance, listGrants, consumeCredit } from '../utils/credits.js';
+import { getBalance, listGrants, consumeCredit, refundCredit } from '../utils/credits.js';
 import { audit } from '../utils/audit.js';
 import { notifyDiscord } from '../utils/discord.js';
 import { signedDownloadUrl } from '../config/r2.js';
@@ -76,16 +76,15 @@ const ticketSchema = z.object({
   description: z.string().trim().min(1).max(5000),
 });
 
-const uploadTicketFile = multer({
-  storage: multer.memoryStorage(),
-  limits:  { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) =>
-    cb(null, ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+const uploadTicketFile = singleUpload({
+  mimetypes: ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'],
+  maxMb: 10,
+  label: 'PDF ou image (JPEG, PNG, WebP)',
 });
 
 /* ── POST /api/orgs/:orgId/tickets — soumission (décompte immédiat) ────────
  * Multipart : title, description + 1 fichier optionnel (PDF/image, 10 Mo). */
-router.post('/:orgId/tickets', ticketLimiter, uploadTicketFile.single('file'), async (req, res) => {
+router.post('/:orgId/tickets', ticketLimiter, uploadTicketFile, async (req, res) => {
   const parsed = ticketSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Données invalides' });
 
@@ -109,22 +108,47 @@ router.post('/:orgId/tickets', ticketLimiter, uploadTicketFile.single('file'), a
     }
   }
 
+  // Tout ou rien : si l'upload R2 ou l'insertion échoue, le crédit repart
+  // sur son lot d'origine et le fichier orphelin est purgé — jamais de
+  // crédit décompté sans demande créée.
   const ticketId = randomUUID();
-  await getPool().execute(
-    `INSERT INTO tickets (id, organization_id, created_by, credit_grant_id, title, description)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [ticketId, req.org.id, req.user.uid, grantId, title, description]
-  );
+  let r2Key = null;
+  let filename = null;
+  try {
+    if (req.file) {
+      const ext = req.file.mimetype === 'application/pdf' ? 'pdf' : req.file.mimetype.split('/')[1];
+      r2Key = `orgs/${req.org.id}/tickets/${ticketId}.${ext}`;
+      filename = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
+      await putObject(r2Key, req.file.buffer, req.file.mimetype);
+    }
 
-  if (req.file) {
-    const ext = req.file.mimetype === 'application/pdf' ? 'pdf' : req.file.mimetype.split('/')[1];
-    const r2Key = `orgs/${req.org.id}/tickets/${ticketId}.${ext}`;
-    const filename = Buffer.from(req.file.originalname, 'latin1').toString('utf8');
-    await putObject(r2Key, req.file.buffer, req.file.mimetype);
-    await getPool().execute(
-      'INSERT INTO ticket_attachments (ticket_id, r2_key, filename, size) VALUES (?, ?, ?, ?)',
-      [ticketId, r2Key, filename, req.file.size]
-    );
+    const conn = await getPool().getConnection();
+    try {
+      await conn.beginTransaction();
+      await conn.execute(
+        `INSERT INTO tickets (id, organization_id, created_by, credit_grant_id, title, description)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [ticketId, req.org.id, req.user.uid, grantId, title, description]
+      );
+      if (r2Key) {
+        await conn.execute(
+          'INSERT INTO ticket_attachments (ticket_id, r2_key, filename, size) VALUES (?, ?, ?, ?)',
+          [ticketId, r2Key, filename, req.file.size]
+        );
+      }
+      await conn.commit();
+    } catch (e) {
+      await conn.rollback();
+      throw e;
+    } finally {
+      conn.release();
+    }
+  } catch (e) {
+    if (grantId) {
+      await refundCredit(grantId).catch((err) => console.error('[tickets] recrédit échoué:', err.message));
+    }
+    if (r2Key) await deleteObject(r2Key).catch(() => {});
+    throw e;
   }
 
   const balance = await getBalance(req.org.id);
@@ -168,10 +192,22 @@ router.post('/:orgId/tickets/:ticketId/confirm', async (req, res) => {
   const grantId = await consumeCredit(req.org.id);
   if (!grantId) return res.status(409).json({ error: 'Plus de crédit disponible ce mois-ci' });
 
-  await getPool().execute(
-    "UPDATE tickets SET status = 'en_attente', credit_grant_id = ? WHERE id = ?",
-    [grantId, rows[0].id]
-  );
+  // UPDATE conditionné sur le statut : en cas de double clic ou de second
+  // onglet, un seul crédit part — l'autre repart sur son lot d'origine.
+  let result;
+  try {
+    [result] = await getPool().execute(
+      "UPDATE tickets SET status = 'en_attente', credit_grant_id = ? WHERE id = ? AND status = 'a_confirmer'",
+      [grantId, rows[0].id]
+    );
+  } catch (e) {
+    await refundCredit(grantId).catch((err) => console.error('[tickets] recrédit échoué:', err.message));
+    throw e;
+  }
+  if (!result.affectedRows) {
+    await refundCredit(grantId);
+    return res.status(409).json({ error: 'Demande déjà traitée' });
+  }
   await audit('client', req.user.uid, 'ticket.reconfirm', 'ticket', rows[0].id, { org: req.org.name });
   notifyDiscord('🔁 Demande reportée confirmée', `**${req.org.name}** — "${rows[0].title}" (crédit du nouveau mois décompté)`);
   res.json({ confirmed: true });
@@ -307,16 +343,16 @@ router.post('/:orgId/documents/:docId/sign', async (req, res) => {
 
 /* ═══ Onboarding : contrat signé + paiement ═══════════════════════════════ */
 
-const uploadPdf = multer({
-  storage: multer.memoryStorage(),
-  limits:  { fileSize: 10 * 1024 * 1024 },
-  fileFilter: (_req, file, cb) => cb(null, file.mimetype === 'application/pdf'),
+const uploadPdf = singleUpload({
+  mimetypes: ['application/pdf'],
+  maxMb: 10,
+  label: 'PDF',
 });
 
 /* ── POST /api/orgs/:orgId/documents/signed-contract ───────────────────────
  * Le client re-dépose le contrat signé (PDF). Les deux versions sont gardées.
  * Passage automatique contract → payment. */
-router.post('/:orgId/documents/signed-contract', uploadPdf.single('file'), async (req, res) => {
+router.post('/:orgId/documents/signed-contract', uploadPdf, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Fichier PDF requis (10 Mo max)' });
   if (req.org.onboarding_status !== 'contract') {
     return res.status(409).json({ error: 'Le dépôt du contrat signé n\'est pas attendu à cette étape' });
@@ -424,7 +460,11 @@ router.get('/:orgId/messages', async (req, res) => {
     'SELECT id, sender, body, created_at FROM messages WHERE organization_id = ? ORDER BY created_at ASC LIMIT 500',
     [req.org.id]
   );
-  await getPool().execute('UPDATE organizations SET client_last_read_at = NOW() WHERE id = ?', [req.org.id]);
+  // Seul le client marque la conversation comme lue : un passage admin par
+  // cette route ne doit pas fausser le « Vu »
+  if (!req.user.admin) {
+    await getPool().execute('UPDATE organizations SET client_last_read_at = NOW() WHERE id = ?', [req.org.id]);
+  }
   // Aucune information de lecture n'est renvoyée au client
   res.json({ messages });
 });

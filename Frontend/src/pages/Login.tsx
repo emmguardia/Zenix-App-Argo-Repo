@@ -1,7 +1,6 @@
 import { CheckCircle2, LogIn } from 'lucide-react';
 
 const ERRORS: Record<string, string> = {
-  'compte-non-provisionne': "Votre accès n'est pas encore activé. Contactez-nous à contact@zenixweb.fr et on s'en occupe tout de suite.",
   'session-expiree':        'La connexion a pris trop de temps, réessayez.',
   'auth-echec':             'La connexion a échoué, réessayez.',
   'auth-indisponible':      'Le service de connexion est momentanément indisponible, réessayez dans quelques minutes.',

@@ -52,24 +52,29 @@ async function onInvoicePaid(invoice) {
       'Une demande de modification mise de côté le mois dernier est de retour dans votre espace client Zenix. Connectez-vous pour la confirmer ou l\'annuler.');
   }
 
-  // Engagement 1 an : au 11e paiement, coupon 100% "une fois" → 12e mois à 0 €
+  // Engagement 1 an : au 11e paiement, coupon 100% "une fois" → 12e mois à 0 €.
+  // Compté depuis Stripe (factures payées de l'abonnement), pas depuis les
+  // lots locaux : reste juste pour un client importé avec un historique
+  // antérieur à la plateforme.
   let freeMonthApplied = false;
-  if (org.billing_interval === 'annual' && process.env.STRIPE_COUPON_FREE_MONTH) {
-    const [cycles] = await getPool().execute(
-      "SELECT COUNT(*) AS n FROM credit_grants WHERE organization_id = ? AND source = 'forfait'",
-      [org.id]
-    );
-    if (Number(cycles[0].n) === 11 && org.stripe_subscription_id) {
-      try {
+  if (org.billing_interval === 'annual' && process.env.STRIPE_COUPON_FREE_MONTH && org.stripe_subscription_id) {
+    try {
+      let paid = 0;
+      for await (const _inv of getStripe().invoices.list({
+        subscription: org.stripe_subscription_id, status: 'paid', limit: 100,
+      })) {
+        if (++paid > 11) break;
+      }
+      if (paid === 11) {
         await getStripe().subscriptions.update(org.stripe_subscription_id, {
           discounts: [{ coupon: process.env.STRIPE_COUPON_FREE_MONTH }],
         });
         freeMonthApplied = true;
         await audit('system', null, 'subscription.free-month-applied', 'organization', org.id);
-      } catch (e) {
-        console.error('[stripe] coupon 12e mois:', e.message);
-        notifyDiscord('⚠️ Coupon 12e mois NON appliqué', `**${org.name}** — à faire à la main : ${e.message}`);
       }
+    } catch (e) {
+      console.error('[stripe] coupon 12e mois:', e.message);
+      notifyDiscord('⚠️ Coupon 12e mois NON appliqué', `**${org.name}** — à faire à la main : ${e.message}`);
     }
   }
 
