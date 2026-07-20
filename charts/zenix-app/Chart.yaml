@@ -3,4 +3,4 @@ name: zenix-app
 description: Zenix — Plateforme Espace Client (app.zenixweb.fr)
 type: application
 version: 0.1.0
-appVersion: "0.2.7"
+appVersion: "0.2.8"
