@@ -30,22 +30,22 @@ backend:
     APP_URL: https://app.zenixweb.fr
     FRONTEND_URL: https://app.zenixweb.fr
     ADMIN_GROUP: GRP Admins
-    # IDs des Prices Stripe (mode test — à remplacer par les live au lancement)
-    STRIPE_PRICE_START: "price_1Tpq762XjKwHiB5JkXxsindK"
-    STRIPE_PRICE_RELAX: "price_1Tpq762XjKwHiB5JBdNkQyDz"
-    STRIPE_PRICE_PRO: "price_1Tpq762XjKwHiB5JHiz1C7GQ"
+    # IDs des Prices Stripe (mode LIVE)
+    STRIPE_PRICE_START: "price_1TqcGIFPffgTXsMQMRBPhcJc"
+    STRIPE_PRICE_RELAX: "price_1TqcJSFPffgTXsMQJ9qWUv1F"
+    STRIPE_PRICE_PRO: "price_1Tv5AJFPffgTXsMQVyJRm4Nq"
     # Grille Asso (tarifs réduits)
-    STRIPE_PRICE_ESSENTIEL_ASSO: "price_1Tr20j2XjKwHiB5JBGuGkFfs"
-    STRIPE_PRICE_START_ASSO: "price_1TpwJ12XjKwHiB5JZ8jR02UV"
-    STRIPE_PRICE_RELAX_ASSO: "price_1TpwJ12XjKwHiB5JQOhL2pRz"
-    STRIPE_PRICE_PRO_ASSO: "price_1TpwJ22XjKwHiB5JEIjnFgSc"
+    STRIPE_PRICE_ESSENTIEL_ASSO: "price_1Tv5BuFPffgTXsMQ4e7usEVJ"
+    STRIPE_PRICE_START_ASSO: "price_1TqcGIFPffgTXsMQRB4KMjM5"
+    STRIPE_PRICE_RELAX_ASSO: "price_1TqcK0FPffgTXsMQk4ThYha8"
+    STRIPE_PRICE_PRO_ASSO: "price_1Tv5AiFPffgTXsMQVwsNOXCA"
     # Coupon 100% "une fois" appliqué automatiquement au 11e paiement (engagement 1 an)
     STRIPE_COUPON_FREE_MONTH: "zenix-12e-mois-offert"
     # Emails transactionnels (email-service du cluster) — strict nécessaire uniquement
     EMAIL_SERVICE_URL: "http://email-service.email-service.svc.cluster.local:8080"
     EMAIL_TEMPLATE_ID: "zenix-app-notification"
-    # Clé publique Stripe (pk_test_... — PAS un secret, Dashboard → Clés API)
-    STRIPE_PUBLISHABLE_KEY: "pk_test_51RGyw32XjKwHiB5J1a4wvTeBhIrgbiyPQUdLJtV4ZMdwh1VdIJMJcgv4UT2roHeixiHxaEdFCxt4XfvcJsJtTWSh00GQTr1ooF"
+    # Clé publique Stripe (pk_live_... — PAS un secret, Dashboard → Clés API)
+    STRIPE_PUBLISHABLE_KEY: "pk_live_51RGyN2FPffgTXsMQQkWlcAkD64k3JTXfyKFdoJuGT6LyXjb626u7ewUHqnQXM4TW5HsZh08jOAztpvcDkJjSI4J200whQW8byD"
   resources:
     requests:
       cpu: "50m"
