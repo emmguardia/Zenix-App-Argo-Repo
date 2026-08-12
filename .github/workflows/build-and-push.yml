@@ -1,5 +1,20 @@
-# Build and push: main → version + digest (prod)
-# ArgoCD: App = branche main + namespace zenix-app
+# Build & push : main -> tests + scan Trivy + push GHCR + pin digest dans values.yaml
+# ArgoCD reprend ensuite le relai et déploie sur le cluster (namespace zenix-app).
+#
+# Deux corrections importantes par rapport à la version précédente :
+#
+#   1. pnpm au lieu de npm. `npm ci` exécute les scripts d'installation de TOUTES
+#      les dépendances — le vecteur de compromission supply-chain le plus courant,
+#      sur le service qui détient en runtime la clé secrète Stripe, les
+#      identifiants R2, le mot de passe de la base et le SESSION_SECRET.
+#      Les fichiers .npmrc portent désormais `ignore-scripts=true` et
+#      `minimum-release-age=1440`, comme sur le dépôt du site vitrine.
+#
+#   2. Trivy scanne AVANT le push. L'ordre précédent était build → push → scan :
+#      l'image vulnérable était déjà publiée sur GHCR quand le scan échouait.
+#      On construit maintenant en local, on scanne, et on ne pousse que si le
+#      scan est propre — comme le fait déjà le dépôt du site vitrine, et comme
+#      SECURITY.md le décrit.
 
 name: Build and push to GHCR
 
@@ -14,7 +29,9 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  TRIVY_IMAGE: aquasec/trivy:0.69.3
+  TRIVY_IMAGE: aquasec/trivy:0.73.0
+  PNPM_VERSION: 10.33.4
+  NODE_VERSION: '22'
 
 permissions:
   contents: read
@@ -39,39 +56,55 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
           cache-dependency-path: |
-            Backend/package-lock.json
-            Frontend/package-lock.json
+            Backend/pnpm-lock.yaml
+            Frontend/pnpm-lock.yaml
 
       - name: Backend – install
-        run: cd Backend && npm ci
+        working-directory: Backend
+        run: pnpm install --frozen-lockfile
 
-      - name: Backend – audit (moderate+)
-        run: cd Backend && npm audit --audit-level=moderate
+      # Restreint aux dépendances de production : les dépendances de dev ne
+      # partent pas en production, une CVE qui les concerne ne doit pas bloquer
+      # un déploiement. Le seuil reste `moderate`, plus strict que le site
+      # vitrine, parce que ce service manipule paiements et documents clients.
+      - name: Backend – audit (prod, moderate+)
+        working-directory: Backend
+        run: pnpm audit --prod --audit-level moderate
 
-      - name: Backend – test (if present)
-        run: cd Backend && npm run test --if-present
+      - name: Backend – test
+        working-directory: Backend
+        run: pnpm run --if-present test
 
       - name: Frontend – install
-        run: cd Frontend && npm ci
+        working-directory: Frontend
+        run: pnpm install --frozen-lockfile
 
-      - name: Frontend – audit (moderate+)
-        run: cd Frontend && npm audit --audit-level=moderate
+      - name: Frontend – audit (prod, moderate+)
+        working-directory: Frontend
+        run: pnpm audit --prod --audit-level moderate
 
-      - name: Frontend – build (type-check + bundle)
-        run: cd Frontend && npm run build
+      # `build` = tsc -b && vite build : vérifie le typage en plus du bundle.
+      - name: Frontend – build (typecheck + bundle)
+        working-directory: Frontend
+        run: pnpm run build
 
   build-and-push:
     name: Build and push
     needs: test
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: write
       packages: write
@@ -115,6 +148,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      # ── Backend ──────────────────────────────────────────────────────────────
       - name: Extract metadata (backend)
         id: meta-backend
         uses: docker/metadata-action@v6
@@ -123,7 +157,28 @@ jobs:
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
 
-      - name: Build and push backend
+      # Étape 1 : build local, sans push, pour pouvoir scanner avant publication.
+      - name: Build backend (local — pour scan Trivy)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./Backend
+          load: true
+          push: false
+          tags: scan-app-back:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          pull: true
+
+      # Étape 2 : scan AVANT push — une image vulnérable ne part jamais sur GHCR.
+      - name: Trivy scan backend (avant push)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            ${{ env.TRIVY_IMAGE }} image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed \
+            --skip-version-check --format table \
+            scan-app-back:latest
+
+      # Étape 3 : push uniquement si le scan est propre.
+      - name: Push backend
         id: build-backend
         uses: docker/build-push-action@v7
         with:
@@ -131,18 +186,10 @@ jobs:
           push: true
           tags: ${{ steps.meta-backend.outputs.tags }}
           labels: ${{ steps.meta-backend.outputs.labels }}
-          no-cache: true
+          cache-from: type=gha
           pull: true
 
-      - name: Trivy scan (backend)
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD \
-            ${{ env.TRIVY_IMAGE }} image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --format table \
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/zenix-app-back:${{ steps.tag.outputs.tag }}
-
+      # ── Frontend ─────────────────────────────────────────────────────────────
       - name: Extract metadata (frontend)
         id: meta-frontend
         uses: docker/metadata-action@v6
@@ -151,7 +198,25 @@ jobs:
           tags: |
             type=raw,value=${{ steps.tag.outputs.tag }}
 
-      - name: Build and push frontend
+      - name: Build frontend (local — pour scan Trivy)
+        uses: docker/build-push-action@v7
+        with:
+          context: ./Frontend
+          load: true
+          push: false
+          tags: scan-app-front:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          pull: true
+
+      - name: Trivy scan frontend (avant push)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            ${{ env.TRIVY_IMAGE }} image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed \
+            --skip-version-check --format table \
+            scan-app-front:latest
+
+      - name: Push frontend
         id: build-frontend
         uses: docker/build-push-action@v7
         with:
@@ -159,19 +224,10 @@ jobs:
           push: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
-          no-cache: true
+          cache-from: type=gha
           pull: true
 
-      - name: Trivy scan (frontend)
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          docker run --rm -e TRIVY_USERNAME -e TRIVY_PASSWORD \
-            ${{ env.TRIVY_IMAGE }} image --exit-code 1 --severity CRITICAL,HIGH --ignore-unfixed --format table \
-            ${{ env.REGISTRY }}/${{ github.repository_owner }}/zenix-app-front:${{ steps.tag.outputs.tag }}
-
-      # Piner les images par digest pour qu'ArgoCD détecte le changement et déploie
+      # ── Pin digest dans values.yaml → ArgoCD détecte et déploie ──────────────
       - name: Pin Helm values to image digest
         run: |
           TAG="${{ steps.tag.outputs.tag }}"

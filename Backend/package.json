@@ -4,15 +4,17 @@
   "description": "Backend Zenix Espace Client — OIDC Authentik, Stripe Billing, crédits de modification, R2",
   "main": "server.js",
   "type": "module",
+  "packageManager": "pnpm@10.33.4",
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "pnpm": ">=10"
   },
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
     "migrate": "node scripts/migrate.js",
     "test": "node --experimental-test-module-mocks --test",
-    "audit": "npm audit --audit-level=high"
+    "audit": "pnpm audit --prod --audit-level moderate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",
