@@ -43,8 +43,21 @@ ENV NODE_ENV=production
 
 RUN apk update && apk upgrade --no-cache
 
-# Utilisateur non-root (uid 10000), aligné sur le securityContext du chart Helm.
-RUN addgroup -g 10000 appuser && adduser -D -u 10000 -G appuser appuser
+# Aucun utilisateur à créer : les images officielles node embarquent déjà un
+# utilisateur `node` en uid/gid 1000, et c'est précisément la valeur que le
+# chart impose via `runAsUser: 1000`
+# (charts/zenix-app/templates/backend-deployment.yaml).
+#
+# Les deux DOIVENT coïncider : Kubernetes applique son propre uid quel que soit
+# le `USER` de l'image. Un uid différent ici donnerait un process tournant sous
+# une identité qui ne possède pas /app — ça tient tant que les fichiers restent
+# lisibles par tous, et ça casse à la première écriture ou au premier fichier en
+# droits restreints.
+#
+# (Le site vitrine crée un uid 10000 de son côté, justement parce que 1000 est
+# déjà pris dans l'image de base. Unifier les deux dépôts sur une seule valeur
+# serait souhaitable, mais c'est un changement à faire volontairement, pas au
+# détour d'un correctif.)
 
 # HARDENING SUPPLY-CHAIN : npm, npx, corepack et leurs dépendances bundlées ne
 # servent à rien au runtime. Les retirer supprime la principale source de CVEs
@@ -62,21 +75,21 @@ RUN rm -rf \
 
 WORKDIR /app
 
-COPY --from=deps --chown=10000:10000 /app/node_modules ./node_modules
-COPY --chown=10000:10000 package.json ./
+COPY --from=deps --chown=1000:1000 /app/node_modules ./node_modules
+COPY --chown=1000:1000 package.json ./
 
 # Code applicatif, listé explicitement.
 # L'ancien `COPY . .` embarquait aussi test/ et tout fichier traînant dans le
 # dossier : une image de production ne doit contenir que ce qu'elle exécute.
-COPY --chown=10000:10000 server.js ./
-COPY --chown=10000:10000 config/ ./config/
-COPY --chown=10000:10000 middleware/ ./middleware/
-COPY --chown=10000:10000 routes/ ./routes/
-COPY --chown=10000:10000 utils/ ./utils/
+COPY --chown=1000:1000 server.js ./
+COPY --chown=1000:1000 config/ ./config/
+COPY --chown=1000:1000 middleware/ ./middleware/
+COPY --chown=1000:1000 routes/ ./routes/
+COPY --chown=1000:1000 utils/ ./utils/
 # scripts/ contient les migrations SQL, lancées ponctuellement en Job K8s.
-COPY --chown=10000:10000 scripts/ ./scripts/
+COPY --chown=1000:1000 scripts/ ./scripts/
 
-USER appuser
+USER node
 
 EXPOSE 3000
 

@@ -26,6 +26,21 @@ spec:
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
+        # uid/gid 101 = l'utilisateur `nginx` de l'image nginx-unprivileged.
+        # Déclarés explicitement plutôt que laissés à l'image : c'est ce que
+        # `fsGroup` doit refléter, et un changement d'image ne doit pas
+        # désaligner les deux en silence.
+        runAsUser: 101
+        runAsGroup: 101
+        # INDISPENSABLE avec les emptyDir montés plus bas.
+        # Sans fsGroup, kubelet crée le volume en root:root sans droit
+        # d'écriture pour le groupe : l'entrypoint, qui tourne en uid 101, ne
+        # peut pas y écrire le default.conf rendu. nginx démarre alors SANS
+        # aucun bloc `server` — le conteneur paraît sain (workers lancés, aucune
+        # erreur au démarrage) mais n'écoute sur rien, et les probes échouent.
+        # Avec fsGroup, kubelet chown le volume sur ce groupe et le rend
+        # inscriptible.
+        fsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
@@ -41,6 +56,22 @@ spec:
         volumeMounts:
         - name: tmp
           mountPath: /tmp
+        # /etc/nginx/conf.d doit être INSCRIPTIBLE, alors que la racine du
+        # conteneur est en lecture seule (readOnlyRootFilesystem: true, à
+        # conserver).
+        #
+        # La configuration nginx est un template : l'entrypoint de l'image y
+        # substitue ${NGINX_LOCAL_RESOLVERS} au démarrage et écrit le résultat
+        # dans /etc/nginx/conf.d/default.conf. Sans ce volume, l'écriture
+        # échoue et le pod part en CrashLoopBackOff :
+        #   20-envsubst-on-templates.sh: can't create
+        #   /etc/nginx/conf.d/default.conf: Read-only file system
+        #
+        # Un emptyDir masque le contenu du dossier dans l'image — sans
+        # conséquence ici : le Dockerfile supprime justement le default.conf
+        # d'origine, et le template vit dans /etc/nginx/templates/.
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d
         ports:
         - containerPort: {{ .Values.frontend.port }}
         resources:
@@ -61,4 +92,8 @@ spec:
           timeoutSeconds: 5
       volumes:
       - name: tmp
+        emptyDir: {}
+      # Reçoit le default.conf rendu par l'entrypoint au démarrage. Quelques
+      # kilo-octets, recréé à chaque démarrage du pod.
+      - name: nginx-conf
         emptyDir: {}
