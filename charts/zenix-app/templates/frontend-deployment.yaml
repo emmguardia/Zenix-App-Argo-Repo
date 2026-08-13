@@ -53,6 +53,21 @@ spec:
           capabilities:
             drop:
             - ALL
+        env:
+        # Nom PLEINEMENT QUALIFIÉ du service backend, substitué dans le template
+        # nginx au démarrage par l'entrypoint de l'image.
+        #
+        # Le nom court « zenix-app-backend » ne suffit PAS. Quand proxy_pass
+        # utilise une variable, nginx résout le nom lui-même via son `resolver`
+        # — et ce résolveur, contrairement à celui du système, n'applique pas les
+        # domaines de recherche de /etc/resolv.conf. Un nom court échoue donc en
+        # « Host not found », et toutes les requêtes /api/ repartent en 502
+        # pendant que le reste du site continue de répondre.
+        #
+        # Passe par une variable d'environnement plutôt que d'être écrit en dur :
+        # le chart se déploie aussi dans zenix-app-dev, où le FQDN diffère.
+        - name: BACKEND_HOST
+          value: zenix-app-backend.{{ include "zenix-app.namespace" . }}.svc.cluster.local
         volumeMounts:
         - name: tmp
           mountPath: /tmp

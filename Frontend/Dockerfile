@@ -64,7 +64,14 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # ici, avant tout push GHCR, plutôt qu'au démarrage du pod en production.
 # On rend le template avec un résolveur factice, on teste, puis on nettoie —
 # l'entrypoint regénérera le vrai fichier au démarrage.
-RUN sed 's|${NGINX_LOCAL_RESOLVERS}|127.0.0.11|' /etc/nginx/templates/default.conf.template \
+# Toute variable ${...} du template doit être substituée ici, sinon nginx la
+# prend pour une de ses propres variables et refuse de démarrer
+# (« unknown "backend_host" variable »). Les valeurs sont factices : on ne teste
+# que la syntaxe, l'entrypoint regénérera le fichier avec les vraies au
+# démarrage.
+RUN sed -e 's|${NGINX_LOCAL_RESOLVERS}|127.0.0.11|' \
+        -e 's|${BACKEND_HOST}|backend.example.svc.cluster.local|' \
+        /etc/nginx/templates/default.conf.template \
       > /etc/nginx/conf.d/default.conf \
     && nginx -t \
     && rm -f /etc/nginx/conf.d/default.conf /tmp/nginx.pid
