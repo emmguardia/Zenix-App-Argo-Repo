@@ -94,11 +94,50 @@ export default function Layout() {
         <Outlet />
       </main>
 
-      {!isAdmin && (
-        <footer className="mx-auto max-w-6xl px-4 pb-8 text-center text-xs text-slate-400">
-          Un problème, une question ? Écrivez-nous : contact@zenixweb.fr
-        </footer>
-      )}
+      {/* Pied de page affiché aussi côté admin : les mentions légales sont dues
+          sur l'ensemble du site, pas seulement sur les pages client.
+
+          POURQUOI DES LIENS VERS zenixweb.fr PLUTÔT QUE DES PAGES ICI
+          L'article 6-III de la LCEN impose que l'information soit ACCESSIBLE,
+          pas qu'elle soit hébergée sur le même domaine. Dupliquer les mentions
+          légales et la politique de confidentialité dans cette application
+          garantirait qu'elles divergent un jour de celles du site — avec deux
+          documents opposables qui se contredisent. Une seule source de vérité,
+          côté vitrine.
+
+          `rel="noopener"` est obligatoire avec `target="_blank"` : sans lui, la
+          page ouverte reçoit une référence `window.opener` vers celle-ci. */}
+      <footer className="mx-auto max-w-6xl px-4 pb-8 pt-4 text-center text-xs text-slate-400">
+        {!isAdmin && (
+          <p className="mb-3">Un problème, une question ? Écrivez-nous : contact@zenixweb.fr</p>
+        )}
+        <nav className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          <a
+            href="https://www.zenixweb.fr/mentions-legales"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-slate-600"
+          >
+            Mentions légales
+          </a>
+          <a
+            href="https://www.zenixweb.fr/politique-confidentialite"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-slate-600"
+          >
+            Politique de confidentialité
+          </a>
+          <a
+            href="https://www.zenixweb.fr/conditions-vente"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:text-slate-600"
+          >
+            Conditions générales de vente
+          </a>
+        </nav>
+      </footer>
     </div>
   );
 }

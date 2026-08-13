@@ -160,7 +160,7 @@ router.post('/:id/decision', async (req, res) => {
   }
 
   await audit('admin', req.user.uid, `ticket.${decision}`, 'ticket', ticket.id, { org: ticket.org_name });
-  notifyDiscord('🎫 Décision ticket', `**${ticket.org_name}** — "${ticket.title}" → ${decision}`);
+  notifyDiscord('🎫 Décision ticket', `**${ticket.org_name}** — demande ${decision}.`);
   res.json({ decided: true, decision });
 });
 

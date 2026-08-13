@@ -47,6 +47,12 @@ ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 # au démarrage et écrit le résultat dans conf.d.
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 
+# Le snippet d'en-têtes vit HORS de conf.d : tout *.conf présent dans conf.d est
+# inclus automatiquement au niveau http, ce qui n'est pas ce qu'on veut pour un
+# fragment destiné à être inclus dans chaque location.
+RUN mkdir -p /etc/nginx/snippets
+COPY security-headers.conf /etc/nginx/snippets/security-headers.conf
+
 # On retire la config par défaut de l'image : si le rendu du template échouait,
 # nginx démarrerait sans server block et la readiness probe échouerait
 # franchement, au lieu de servir silencieusement autre chose.

@@ -157,7 +157,7 @@ router.post('/:orgId/tickets', ticketLimiter, uploadTicketFile, async (req, res)
   });
   notifyDiscord(
     grantId ? '🎫 Nouveau ticket' : '⚠️ Ticket HORS CRÉDIT',
-    `**${req.org.name}** — ${title}\npar ${req.user.name || req.user.email}${req.file ? ' (+ pièce jointe)' : ''}${grantId ? '' : '\n**Aucun crédit disponible** → décision manuelle requise'}`
+    `**${req.org.name}** a déposé une demande${req.file ? ' (avec pièce jointe)' : ''}.${grantId ? '' : '\n**Aucun crédit disponible** → décision manuelle requise'}`
   );
 
   res.status(201).json({
@@ -209,7 +209,7 @@ router.post('/:orgId/tickets/:ticketId/confirm', async (req, res) => {
     return res.status(409).json({ error: 'Demande déjà traitée' });
   }
   await audit('client', req.user.uid, 'ticket.reconfirm', 'ticket', rows[0].id, { org: req.org.name });
-  notifyDiscord('🔁 Demande reportée confirmée', `**${req.org.name}** — "${rows[0].title}" (crédit du nouveau mois décompté)`);
+  notifyDiscord('🔁 Demande reportée confirmée', `**${req.org.name}** — crédit du nouveau mois décompté.`);
   res.json({ confirmed: true });
 });
 
@@ -337,7 +337,7 @@ router.post('/:orgId/documents/:docId/sign', async (req, res) => {
   await audit('client', req.user.uid, 'document.sign', 'document', doc.id, {
     org: req.org.name, name, hash, ip, type: doc.type,
   });
-  notifyDiscord('✍️ Document signé en ligne', `**${req.org.name}** — ${doc.filename} (par ${name})`);
+  notifyDiscord('✍️ Document signé en ligne', `**${req.org.name}** — document de type « ${doc.type} » signé.`);
   res.json({ signed: true, step });
 });
 
@@ -480,8 +480,10 @@ router.post('/:orgId/messages', ticketLimiter, async (req, res) => {
     "INSERT INTO messages (id, organization_id, sender, sender_id, body) VALUES (?, ?, 'client', ?, ?)",
     [id, req.org.id, req.user.uid, parsed.data.body]
   );
+  // Aucun extrait du message : seule l'existence d'un nouveau message part
+  // vers Discord. Le contenu se lit dans l'espace client.
   notifyDiscord('💬 Nouveau message client',
-    `**${req.org.name}** — ${parsed.data.body.slice(0, 180)}${parsed.data.body.length > 180 ? '…' : ''}`);
+    `**${req.org.name}** vous a écrit — à lire dans l'espace client.`);
   res.status(201).json({ id });
 });
 

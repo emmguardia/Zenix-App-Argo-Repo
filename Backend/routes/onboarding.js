@@ -131,7 +131,12 @@ router.post('/profile', async (req, res) => {
 
   await audit('client', req.user.uid, 'onboarding.profile', 'organization', org.id);
   if (org.onboarding_status === 'review') {
-    notifyDiscord('📋 Infos client à valider', `**${d.first_name} ${d.last_name}** a complété ses informations.`);
+    // Le nom de l'organisation, pas celui du contact : une personne physique
+    // n'a pas à figurer dans une notification qui quitte l'UE.
+    // Repli : la branche « nouveau client » construit `org` à la main, sans
+    // `name`. Elle ne peut pas atteindre l'état `review` aujourd'hui, mais un
+    // « undefined » dans une notification serait une régression silencieuse.
+    notifyDiscord('📋 Infos client à valider', `**${org.name || 'Nouveau client'}** a complété ses informations.`);
   }
   res.json({ step: org.onboarding_status });
 });
@@ -161,7 +166,7 @@ router.post('/plan', async (req, res) => {
   );
   await audit('client', req.user.uid, 'onboarding.plan', 'organization', org.id, parsed.data);
   notifyDiscord('🆕 Nouvelle souscription à valider',
-    `**${org.contact_first_name} ${org.contact_last_name}** a choisi **Zenix ${parsed.data.plan}** ` +
+    `**${org.name}** a choisi **Zenix ${parsed.data.plan}** ` +
     `(grille ${parsed.data.tier === 'asso' ? 'ASSO' : 'entreprise'}, ${parsed.data.interval === 'annual' ? 'engagement 1 an — 12e mois offert' : 'mensuel sans engagement'}) — valide ses infos dans l'admin.`);
   res.json({ step: 'review' });
 });
