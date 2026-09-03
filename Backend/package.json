@@ -17,21 +17,21 @@
     "audit": "pnpm audit --prod --audit-level moderate"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.700.0",
-    "@aws-sdk/s3-request-presigner": "^3.700.0",
-    "compression": "^1.7.4",
+    "@aws-sdk/client-s3": "^3.1124.0",
+    "@aws-sdk/s3-request-presigner": "^3.1124.0",
+    "compression": "^1.8.1",
     "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
     "express": "^5.2.1",
-    "express-rate-limit": "^7.5.0",
-    "helmet": "^8.0.0",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.0",
-    "mysql2": "^3.11.0",
-    "openid-client": "^6.1.0",
+    "express-rate-limit": "^7.5.1",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.3.0",
+    "mysql2": "^3.24.3",
+    "openid-client": "^6.8.7",
     "pdf-lib": "^1.17.1",
-    "stripe": "^18.0.0",
-    "zod": "^3.23.8"
+    "stripe": "^18.5.0",
+    "zod": "^3.25.76"
   }
 }
