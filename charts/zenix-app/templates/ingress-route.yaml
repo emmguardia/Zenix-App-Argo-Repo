@@ -20,3 +20,4 @@ spec:
         - name: crowdsec-bouncer
           namespace: kube-system
         {{- end }}
+  tls: {}

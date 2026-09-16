@@ -9,7 +9,7 @@ imagePullSecrets:
 
 ingress:
   entryPoints:
-    - web
+    - websecure
   crowdsec: true
 
 # ── Backend (Node.js) ─────────────────────────────────────────────────────────
