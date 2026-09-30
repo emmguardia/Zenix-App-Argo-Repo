@@ -15,7 +15,7 @@ ingress:
 # ── Backend (Node.js) ─────────────────────────────────────────────────────────
 backend:
   # Pinnée par la CI après le premier build
-  image: ghcr.io/emmguardia/zenix-app-back@sha256:fb5b278e773383f5fd4afdac52343f873b5cf58ec2324009548aac965055dbbf
+  image: ghcr.io/emmguardia/zenix-app-back@sha256:9cd0b4ddaf64fb98ae43c5e776c7d02a45cff00fd29f85161df3f19e50738526
   imagePullPolicy: IfNotPresent
   replicas: 1
   strategy:
@@ -63,7 +63,7 @@ backend:
 # ── Frontend (nginx unprivileged) ─────────────────────────────────────────────
 frontend:
   # Pinnée par la CI après le premier build
-  image: ghcr.io/emmguardia/zenix-app-front@sha256:ba31124c9aa27113188c571a1567492f9686156f9100a9e8a2e2a1f5956ce9d0
+  image: ghcr.io/emmguardia/zenix-app-front@sha256:e7fe93dfd0df944f87a0c298ac1ae1b0845c0832bc9604120a0710325e4ae537
   imagePullPolicy: IfNotPresent
   replicas: 2
   strategy:
