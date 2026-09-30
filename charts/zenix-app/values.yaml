@@ -65,7 +65,7 @@ frontend:
   # Pinnée par la CI après le premier build
   image: ghcr.io/emmguardia/zenix-app-front@sha256:ba31124c9aa27113188c571a1567492f9686156f9100a9e8a2e2a1f5956ce9d0
   imagePullPolicy: IfNotPresent
-  replicas: 1
+  replicas: 2
   strategy:
     rollingUpdate:
       maxUnavailable: 0
@@ -80,7 +80,7 @@ frontend:
       memory: "128Mi"
   hpa:
     enabled: true
-    minReplicas: 1
+    minReplicas: 2
     maxReplicas: 4
     cpuTarget: 70
     memoryTarget: 80
