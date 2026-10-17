@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Info, Paperclip, Send, X } from 'lucide-react';
-import { api, type Ticket } from '../api';
+import { Check, Info, Lightbulb, Paperclip, Send, X } from 'lucide-react';
+import { api, type Proposal, type Ticket } from '../api';
 import { useAuth } from '../auth';
 import { Badge, Card, ErrorNote, fmtDate, Spinner, TICKET_STATUS, useToast } from '../ui';
 
@@ -8,6 +8,7 @@ export default function Tickets() {
   const { currentOrg } = useAuth();
   const toast = useToast();
   const [tickets, setTickets] = useState<Ticket[]>([]);
+  const [proposals, setProposals] = useState<Proposal[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,8 +24,13 @@ export default function Tickets() {
     Promise.all([
       api.get<{ tickets: Ticket[] }>(`/orgs/${currentOrg.id}/tickets`),
       api.get<{ balance: number }>(`/orgs/${currentOrg.id}/credits`),
+      api.get<{ proposals: Proposal[] }>(`/orgs/${currentOrg.id}/proposals`),
     ])
-      .then(([t, c]) => { setTickets(t.tickets); setBalance(c.balance); })
+      .then(([t, c, p]) => {
+        setTickets(t.tickets);
+        setBalance(c.balance);
+        setProposals(p.proposals.filter((x) => x.status === 'proposee'));
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [currentOrg]);
@@ -38,6 +44,8 @@ export default function Tickets() {
   if (error) return <ErrorNote message={error} />;
 
   const toConfirm = tickets.filter((t) => t.status === 'a_confirmer');
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const noCredit = (balance ?? 0) === 0;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +77,17 @@ export default function Tickets() {
     } finally { setBusy(null); }
   };
 
+  const decide = async (id: string, action: 'accept' | 'refuse', msg: string) => {
+    setBusy(id);
+    try {
+      await api.post(`/orgs/${currentOrg.id}/proposals/${id}/${action}`);
+      toast(msg);
+      load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erreur', 'error');
+    } finally { setBusy(null); }
+  };
+
   const openAttachment = async (ticketId: string) => {
     const { url } = await api.get<{ url: string }>(`/orgs/${currentOrg.id}/tickets/${ticketId}/attachment`);
     window.open(url, '_blank', 'noreferrer');
@@ -84,6 +103,50 @@ export default function Tickets() {
           {balance ?? 0} restante{(balance ?? 0) > 1 ? 's' : ''} ce mois-ci
         </span>
       </div>
+
+      {/* Propositions d'amélioration envoyées par Zenix : le client décide */}
+      {proposals.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Lightbulb className="h-5 w-5 text-violet-600" />
+            <h2 className="font-semibold text-slate-900">
+              {proposals.length > 1 ? 'Nos idées pour améliorer votre site' : 'Notre idée pour améliorer votre site'}
+            </h2>
+          </div>
+          <p className="text-sm text-slate-500">
+            Chaque mois, on vous propose des améliorations. Si une idée vous plaît, on s'en occupe :
+            elle utilise simplement une des modifications incluses dans votre abonnement.
+          </p>
+          {proposals.map((p) => (
+            <div key={p.id} className="rounded-2xl border-2 border-violet-200 bg-violet-50/60 p-5">
+              <p className="font-semibold text-violet-950">{p.title}</p>
+              <p className="mt-1.5 whitespace-pre-line text-sm text-slate-700">{p.description}</p>
+              <p className="mt-2 text-xs text-slate-400">
+                Proposée le {fmtDate(p.created_at)}
+                {new Date(p.created_at) < monthStart && ' · reportée du mois dernier'}
+              </p>
+              {noCredit && (
+                <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                  Vous avez utilisé toutes vos modifications ce mois-ci : cette idée reste ici et
+                  vous pourrez l'accepter dès le mois prochain.
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button disabled={busy === p.id || noCredit}
+                  onClick={() => decide(p.id, 'accept', 'Super, on s\'en occupe !')}
+                  className="flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+                  <Check className="h-4 w-4" /> Oui, je veux (1 modification)
+                </button>
+                <button disabled={busy === p.id}
+                  onClick={() => decide(p.id, 'refuse', 'C\'est noté, on n\'y touche pas')}
+                  className="rounded-xl border border-violet-300 px-4 py-2 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-50">
+                  Non merci
+                </button>
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
 
       {/* Demandes reportées revenues ce mois-ci : le client décide */}
       {toConfirm.map((t) => (

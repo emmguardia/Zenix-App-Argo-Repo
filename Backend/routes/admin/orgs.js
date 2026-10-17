@@ -9,6 +9,10 @@ import { audit } from '../../utils/audit.js';
 import { notifyDiscord } from '../../utils/discord.js';
 import { putObject, deleteObject, signedDownloadUrl } from '../../config/r2.js';
 import { emailOrgMembers } from '../../utils/email.js';
+import { getBalance } from '../../utils/credits.js';
+import {
+  proposalLimit, countPending, listProposals, createBatch, withdrawProposal, batchEmailMessage, MAX_PROPOSALS_PER_BATCH,
+} from '../../utils/proposals.js';
 
 const router = Router();
 router.use(requireAdmin);
@@ -43,6 +47,8 @@ const orgSchema = z.object({
   contact_last_name:  z.string().trim().max(30).optional().nullable(),
   contact_phone:      z.string().trim().max(30).optional().nullable(),
   billing_email:      z.string().trim().email().max(254).optional().nullable(),
+  // Propositions d'amélioration par mois (null = crédits de la formule)
+  proposals_per_month: z.number().int().min(0).max(MAX_PROPOSALS_PER_BATCH).optional().nullable(),
 });
 
 /* ── POST /api/admin/orgs — créer une organisation ─────────────────────── */
@@ -310,6 +316,65 @@ router.post('/:id/activate', async (req, res) => {
   });
   notifyDiscord('🚀 Projet activé', `**${org.name}** — abonnement ${org.plan} lancé (1er prélèvement en cours)`);
   res.json({ activated: true, subscriptionId: subscription.id });
+});
+
+/* ── Propositions d'amélioration ───────────────────────────────────────────
+ * GET    /:id/proposals        → liste + plafond + places libres + solde
+ * POST   /:id/proposals        → envoi groupé (1 seul email au client)
+ * DELETE /:id/proposals/:pid   → retirer une proposition sans réponse */
+async function loadOrg(id) {
+  const [rows] = await getPool().execute('SELECT * FROM organizations WHERE id = ? LIMIT 1', [id]);
+  return rows[0] ?? null;
+}
+
+router.get('/:id/proposals', async (req, res) => {
+  const org = await loadOrg(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organisation introuvable' });
+
+  const [proposals, pending, balance] = await Promise.all([
+    listProposals(org.id, { includeWithdrawn: true }), countPending(org.id), getBalance(org.id),
+  ]);
+  const limit = proposalLimit(org);
+  res.json({ proposals, limit, pending, available: Math.max(limit - pending, 0), balance });
+});
+
+const batchSchema = z.object({
+  items: z.array(z.object({
+    title:       z.string().trim().min(3).max(255),
+    description: z.string().trim().min(1).max(5000),
+  })).min(1).max(MAX_PROPOSALS_PER_BATCH),
+});
+
+router.post('/:id/proposals', async (req, res) => {
+  const parsed = batchSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Chaque proposition doit avoir un titre (3 caractères min.) et une description' });
+
+  const org = await loadOrg(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organisation introuvable' });
+
+  const result = await createBatch(org, parsed.data.items, req.user.uid);
+  if (result.error) return res.status(409).json({ error: result.error });
+
+  const titles = parsed.data.items.map((i) => i.title);
+  // Un seul email pour tout l'envoi (moins de mails = moins de risque de spam)
+  emailOrgMembers(
+    org.id,
+    titles.length > 1 ? 'Nouvelles propositions pour votre site' : 'Une nouvelle proposition pour votre site',
+    batchEmailMessage(titles, result.pendingBefore),
+    '/modifications'
+  );
+  await audit('admin', req.user.uid, 'proposal.batch', 'organization', org.id, {
+    batch: result.batchId, count: titles.length,
+  });
+  res.status(201).json({ sent: titles.length, batchId: result.batchId });
+});
+
+router.delete('/:id/proposals/:proposalId', async (req, res) => {
+  const ok = await withdrawProposal(req.params.id, req.params.proposalId);
+  if (!ok) return res.status(404).json({ error: 'Proposition introuvable ou déjà traitée par le client' });
+
+  await audit('admin', req.user.uid, 'proposal.withdraw', 'proposal', req.params.proposalId, { org: req.params.id });
+  res.json({ withdrawn: true });
 });
 
 export default router;

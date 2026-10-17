@@ -5,6 +5,7 @@ import { planCredits, createGrant, processDeferredTickets } from '../utils/credi
 import { audit } from '../utils/audit.js';
 import { notifyDiscord } from '../utils/discord.js';
 import { emailOrgMembers } from '../utils/email.js';
+import { countPending } from '../utils/proposals.js';
 
 const router = Router();
 
@@ -18,6 +19,31 @@ async function findOrgByCustomer(customerId) {
 
 async function setOrgStatus(orgId, status) {
   await getPool().execute('UPDATE organizations SET status = ? WHERE id = ?', [status, orgId]);
+}
+
+/** Email de début de mois : demandes reportées et/ou propositions en attente. */
+export function monthlyReminder(deferred, pendingProposals) {
+  const p = pendingProposals;
+  const proposalsText = `${p > 1 ? `${p} propositions d'amélioration attendent` : 'une proposition d\'amélioration attend'} toujours votre réponse`;
+  if (deferred > 0 && p > 0) {
+    return {
+      title: 'Votre espace client vous attend',
+      message: `Vos modifications du mois sont disponibles. Une demande mise de côté le mois dernier est de retour pour confirmation, et ${proposalsText}. Connectez-vous à votre espace client Zenix pour décider.`,
+    };
+  }
+  if (deferred > 0) {
+    return {
+      title: 'Une demande attend votre confirmation',
+      message: 'Une demande de modification mise de côté le mois dernier est de retour dans votre espace client Zenix. Connectez-vous pour la confirmer ou l\'annuler.',
+    };
+  }
+  if (p > 0) {
+    return {
+      title: p > 1 ? 'Des propositions vous attendent' : 'Une proposition vous attend',
+      message: `Vos modifications du mois sont disponibles et ${proposalsText}. Acceptez ou refusez en un clic depuis votre espace client Zenix.`,
+    };
+  }
+  return null;
 }
 
 /* ── invoice.paid : prélèvement OK → lot forfait + tickets reportés ─────── */
@@ -44,13 +70,13 @@ async function onInvoicePaid(invoice) {
 
   if (org.status !== 'active') await setOrgStatus(org.id, 'active');
 
-  // Tickets reportés → retour chez le client pour re-confirmation (+ email,
-  // sinon le client ne sait pas que sa demande l'attend)
+  // Tickets reportés → retour chez le client pour re-confirmation, et
+  // propositions restées sans réponse → reportées sur ce nouveau mois.
+  // UN seul email pour les deux (sinon le client ne sait pas que ça l'attend).
   const deferred = await processDeferredTickets(org.id);
-  if (deferred > 0) {
-    emailOrgMembers(org.id, 'Une demande attend votre confirmation',
-      'Une demande de modification mise de côté le mois dernier est de retour dans votre espace client Zenix. Connectez-vous pour la confirmer ou l\'annuler.');
-  }
+  const pendingProposals = await countPending(org.id);
+  const reminder = monthlyReminder(deferred, pendingProposals);
+  if (reminder) emailOrgMembers(org.id, reminder.title, reminder.message, '/modifications');
 
   // Engagement 1 an : au 11e paiement, coupon 100% "une fois" → 12e mois à 0 €.
   // Compté depuis Stripe (factures payées de l'abonnement), pas depuis les

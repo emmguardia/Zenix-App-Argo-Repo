@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, BadgeCheck, ChevronDown, ChevronUp, Download, Pencil, Plus, Rocket, Trash2, Upload, UserPlus } from 'lucide-react';
-import { api, type AdminDocument, type AdminOrganization, type StripeCustomer } from '../../api';
+import { AlertTriangle, BadgeCheck, ChevronDown, ChevronUp, Download, Lightbulb, Pencil, Plus, Rocket, Send, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { api, type AdminDocument, type AdminOrganization, type AdminProposals, type StripeCustomer } from '../../api';
 import { Badge, Card, ErrorNote, fmtDate, Modal, ORG_STATUS, PLAN_LABELS, Spinner, useToast } from '../../ui';
 
 const inputCls = 'w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-blue-500 focus:outline-none';
@@ -274,6 +274,9 @@ function OrgDetail({ org, onChanged }: { org: AdminOrganization; onChanged: () =
         </div>
       </section>
 
+      {/* key : se recharge si la formule ou le réglage change */}
+      <ProposalsSection key={`${org.plan}-${org.proposals_per_month}`} org={org} />
+
       {/* Documents */}
       <section>
         <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Documents</h4>
@@ -410,6 +413,7 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
     pricing_tier:       org.pricing_tier ?? 'standard',
     billing_interval:   org.billing_interval ?? 'monthly',
     custom_price_id:    org.custom_price_id ?? '',
+    proposals_per_month: org.proposals_per_month == null ? '' : String(org.proposals_per_month),
   });
 
   const save = async () => {
@@ -423,6 +427,7 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
         linked_domain: f.linked_domain || null,
         custom_price_id: f.custom_price_id || null,
         contact_phone: f.contact_phone || null,
+        proposals_per_month: f.proposals_per_month === '' ? null : Number(f.proposals_per_month),
       });
       toast('Infos mises à jour');
       setOpen(false);
@@ -486,6 +491,7 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
           </select>
         </div>
         {field('Price Stripe spécial (optionnel)', 'custom_price_id', { placeholder: 'price_... (prioritaire sur la grille)' })}
+        {field('Propositions d\'amélioration par mois', 'proposals_per_month', { type: 'number', min: 0, max: 20, placeholder: 'Vide = selon la formule (Start 2, Relax 6, Pro 12)' })}
       </div>
       <div className="mt-3 flex gap-2">
         <button onClick={() => setOpen(false)}
@@ -497,6 +503,144 @@ function EditInfos({ org, onSaved }: { org: AdminOrganization; onSaved: () => vo
           {busy ? 'Enregistrement…' : 'Enregistrer'}
         </button>
       </div>
+    </section>
+  );
+}
+
+/* ── Propositions d'amélioration : Enzo propose, le client accepte ou refuse ──
+ * Un envoi = toutes les propositions du mois d'un coup = UN seul email. */
+const PROPOSAL_STATUS: Record<string, { label: string; cls: string }> = {
+  proposee: { label: 'Sans réponse', cls: 'bg-violet-100 text-violet-700' },
+  acceptee: { label: 'Acceptée',     cls: 'bg-emerald-100 text-emerald-800' },
+  refusee:  { label: 'Refusée',      cls: 'bg-slate-200 text-slate-600' },
+  retiree:  { label: 'Retirée',      cls: 'bg-slate-100 text-slate-400' },
+};
+
+function ProposalsSection({ org }: { org: AdminOrganization }) {
+  const toast = useToast();
+  const [data, setData] = useState<AdminProposals | null>(null);
+  const [rows, setRows] = useState<{ title: string; description: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(() => {
+    api.get<AdminProposals>(`/admin/orgs/${org.id}/proposals`)
+      .then((d) => {
+        setData(d);
+        // Autant de cases que de places libres : le mois se prépare d'un coup
+        setRows(Array.from({ length: d.available }, () => ({ title: '', description: '' })));
+      })
+      .catch(() => setData(null));
+  }, [org.id]);
+
+  useEffect(load, [load]);
+
+  if (!data) return null;
+
+  const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  const filled = rows.filter((r) => r.title.trim() || r.description.trim());
+  const valid = filled.length > 0 && filled.every((r) => r.title.trim().length >= 3 && r.description.trim());
+
+  const send = async () => {
+    setBusy(true);
+    try {
+      const { sent } = await api.post<{ sent: number }>(`/admin/orgs/${org.id}/proposals`, { items: filled });
+      toast(`${sent} proposition${sent > 1 ? 's envoyées' : ' envoyée'} — 1 email au client`);
+      load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erreur', 'error');
+    } finally { setBusy(false); }
+  };
+
+  const withdraw = async (id: string) => {
+    setBusy(true);
+    try {
+      await api.delete(`/admin/orgs/${org.id}/proposals/${id}`);
+      toast('Proposition retirée — une place est libérée');
+      load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erreur', 'error');
+    } finally { setBusy(false); }
+  };
+
+  const update = (i: number, key: 'title' | 'description', value: string) =>
+    setRows(rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
+
+  return (
+    <section>
+      <h4 className="mb-2 flex flex-wrap items-center gap-x-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+        <Lightbulb className="h-3.5 w-3.5" /> Propositions d'amélioration
+        <span className="font-medium normal-case tracking-normal text-slate-500">
+          {data.limit}/mois · {data.pending} sans réponse · {data.balance} crédit{data.balance > 1 ? 's' : ''} dispo
+        </span>
+      </h4>
+
+      {data.proposals.length > 0 && (
+        <ul className="mb-3 divide-y divide-slate-100 rounded-xl border border-slate-200">
+          {data.proposals.slice(0, 12).map((p) => (
+            <li key={p.id} className="flex items-start justify-between gap-3 px-4 py-2.5">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-slate-800">{p.title}</p>
+                <p className="text-xs text-slate-400">
+                  {fmtDate(p.created_at)}
+                  {p.status === 'proposee' && new Date(p.created_at) < monthStart && ' · reportée'}
+                  {p.decided_at && p.status !== 'proposee' && ` · ${fmtDate(p.decided_at)}`}
+                  {p.ticket_status === 'termine' && ' · faite ✓'}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Badge {...PROPOSAL_STATUS[p.status]} />
+                {p.status === 'proposee' && (
+                  <button title="Retirer (libère une place)" disabled={busy} onClick={() => withdraw(p.id)}
+                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-50">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {data.available === 0 ? (
+        <p className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+          {data.limit === 0
+            ? 'Aucune proposition prévue pour ce client (formule sans modification ou réglage à 0).'
+            : 'Toutes les places sont prises : attends ses réponses ou retire une proposition.'}
+        </p>
+      ) : (
+        <div className="space-y-3 rounded-xl border border-violet-200 bg-violet-50/40 p-4">
+          {rows.map((r, i) => (
+            <div key={i} className="space-y-2">
+              <div className="flex gap-2">
+                <input className={inputCls} placeholder={`Proposition ${i + 1} — titre court et parlant`} maxLength={255}
+                  value={r.title} onChange={(e) => update(i, 'title', e.target.value)} />
+                {rows.length > 1 && (
+                  <button title="Enlever cette case" onClick={() => setRows(rows.filter((_, j) => j !== i))}
+                    className="rounded-lg p-2 text-slate-400 hover:bg-white">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              <textarea className={inputCls} rows={3} maxLength={5000}
+                placeholder="Ce que ça change pour le client, en mots simples (pourquoi c'est utile, ce que tu vas faire)"
+                value={r.description} onChange={(e) => update(i, 'description', e.target.value)} />
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {rows.length < data.available ? (
+              <button onClick={() => setRows([...rows, { title: '', description: '' }])}
+                className="flex items-center gap-1 text-sm font-medium text-violet-700 hover:text-violet-900">
+                <Plus className="h-4 w-4" /> Ajouter une case
+              </button>
+            ) : <span className="text-xs text-slate-400">{data.available} place{data.available > 1 ? 's' : ''} libre{data.available > 1 ? 's' : ''}</span>}
+            <button disabled={busy || !valid} onClick={send}
+              className="flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50">
+              <Send className="h-4 w-4" />
+              Envoyer {filled.length > 1 ? `les ${filled.length} propositions` : 'la proposition'} (1 email)
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

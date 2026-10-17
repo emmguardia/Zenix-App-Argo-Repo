@@ -4,7 +4,8 @@ import { getPool } from '../config/database.js';
 /**
  * Emails transactionnels via l'email-service du cluster (même mécanique que la
  * vitrine : JWT RS256, issuer email-service). Réservé au STRICT nécessaire :
- * document à signer, échec de paiement, demande reportée à reconfirmer.
+ * document à signer, échec de paiement, demande reportée à reconfirmer,
+ * propositions d'amélioration (1 email par envoi groupé).
  * Ne doit jamais faire échouer l'action principale.
  */
 
@@ -16,7 +17,8 @@ function serviceToken() {
   );
 }
 
-export async function sendClientEmail(toEmail, toName, title, message) {
+/** actionPath : page de l'espace client vers laquelle pointe le bouton (ex. '/modifications'). */
+export async function sendClientEmail(toEmail, toName, title, message, actionPath = '') {
   if (!process.env.EMAIL_SERVICE_URL || !process.env.EMAIL_JWT_PRIVATE_KEY) {
     console.warn('[email] non configuré (EMAIL_SERVICE_URL / EMAIL_JWT_PRIVATE_KEY), skip');
     return;
@@ -34,7 +36,7 @@ export async function sendClientEmail(toEmail, toName, title, message) {
         variables: {
           title,
           message,
-          action_url: process.env.APP_URL || 'https://app.zenixweb.fr',
+          action_url: (process.env.APP_URL || 'https://app.zenixweb.fr') + actionPath,
         },
       }),
     });
@@ -45,7 +47,7 @@ export async function sendClientEmail(toEmail, toName, title, message) {
 }
 
 /** Envoie à tous les comptes liés à l'organisation. */
-export async function emailOrgMembers(orgId, title, message) {
+export async function emailOrgMembers(orgId, title, message, actionPath = '') {
   const [rows] = await getPool().execute(
     `SELECT u.email, u.name FROM memberships m
      JOIN users u ON u.id = m.user_id
@@ -53,6 +55,6 @@ export async function emailOrgMembers(orgId, title, message) {
     [orgId]
   );
   for (const r of rows) {
-    await sendClientEmail(r.email, r.name, title, message);
+    await sendClientEmail(r.email, r.name, title, message, actionPath);
   }
 }
