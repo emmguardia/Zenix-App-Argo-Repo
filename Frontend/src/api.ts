@@ -29,6 +29,7 @@ export interface AdminOrganization extends Organization {
   billing_interval: 'monthly' | 'annual';
   pricing_tier: 'standard' | 'asso';
   custom_price_id: string | null;
+  proposals_per_month: number | null;
 }
 
 export interface OnboardingState {
@@ -102,6 +103,26 @@ export interface AdminTicket extends Ticket {
   created_by_email: string | null;
   credit_grant_id: string | null;
   attachments: number;
+}
+
+export interface Proposal {
+  id: string;
+  batch_id: string;
+  title: string;
+  description: string;
+  status: 'proposee' | 'acceptee' | 'refusee' | 'retiree';
+  ticket_id: string | null;
+  ticket_status: Ticket['status'] | null;
+  created_at: string;
+  decided_at: string | null;
+}
+
+export interface AdminProposals {
+  proposals: Proposal[];
+  limit: number;
+  pending: number;
+  available: number;
+  balance: number;
 }
 
 export interface Invoice {

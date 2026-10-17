@@ -11,6 +11,7 @@ import { singleUpload } from '../middleware/upload.js';
 import { ticketLimiter } from '../config/security.js';
 import { getBalance, listGrants, consumeCredit, refundCredit } from '../utils/credits.js';
 import { audit } from '../utils/audit.js';
+import { listProposals, acceptProposal, refuseProposal } from '../utils/proposals.js';
 import { notifyDiscord } from '../utils/discord.js';
 import { signedDownloadUrl } from '../config/r2.js';
 
@@ -221,6 +222,32 @@ router.post('/:orgId/tickets/:ticketId/cancel', async (req, res) => {
   if (!result.affectedRows) return res.status(404).json({ error: 'Demande introuvable ou déjà traitée' });
   await audit('client', req.user.uid, 'ticket.cancel', 'ticket', req.params.ticketId, { org: req.org.name });
   res.json({ canceled: true });
+});
+
+/* ── Propositions d'amélioration (envoyées par Enzo) ───────────────────── */
+router.get('/:orgId/proposals', async (req, res) => {
+  const proposals = await listProposals(req.org.id);
+  res.json({ proposals });
+});
+
+router.post('/:orgId/proposals/:proposalId/accept', async (req, res) => {
+  const result = await acceptProposal(req.org.id, req.params.proposalId, req.user.uid);
+  if (result.error) return res.status(result.status).json({ error: result.error });
+
+  await audit('client', req.user.uid, 'proposal.accept', 'proposal', req.params.proposalId, {
+    org: req.org.name, ticket: result.ticketId,
+  });
+  notifyDiscord('✅ Proposition acceptée', `**${req.org.name}** a accepté une proposition → à faire (1 crédit décompté).`);
+  res.json({ accepted: true, balance: await getBalance(req.org.id) });
+});
+
+router.post('/:orgId/proposals/:proposalId/refuse', async (req, res) => {
+  const ok = await refuseProposal(req.org.id, req.params.proposalId, req.user.uid);
+  if (!ok) return res.status(404).json({ error: 'Proposition introuvable ou déjà traitée' });
+
+  await audit('client', req.user.uid, 'proposal.refuse', 'proposal', req.params.proposalId, { org: req.org.name });
+  notifyDiscord('❌ Proposition refusée', `**${req.org.name}** a refusé une proposition.`);
+  res.json({ refused: true });
 });
 
 /* ── GET /api/orgs/:orgId/documents ────────────────────────────────────── */

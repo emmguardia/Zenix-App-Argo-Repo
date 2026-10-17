@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Globe, Pencil, Wrench } from 'lucide-react';
-import { api, type CreditGrant, type Organization } from '../api';
+import { ArrowRight, Globe, Lightbulb, Pencil, Wrench } from 'lucide-react';
+import { api, type CreditGrant, type Organization, type Proposal } from '../api';
 import { useAuth } from '../auth';
 import { Badge, Card, ErrorNote, fmtDate, GRANT_SOURCE, ORG_STATUS, PLAN_LABELS, Spinner } from '../ui';
 
@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [org, setOrg] = useState<Organization | null>(null);
   const [balance, setBalance] = useState(0);
   const [grants, setGrants] = useState<CreditGrant[]>([]);
+  const [pendingProposals, setPendingProposals] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -22,11 +23,13 @@ export default function Dashboard() {
     Promise.all([
       api.get<{ organization: Organization; balance: number }>(`/orgs/${currentOrg.id}`),
       api.get<{ balance: number; grants: CreditGrant[] }>(`/orgs/${currentOrg.id}/credits`),
+      api.get<{ proposals: Proposal[] }>(`/orgs/${currentOrg.id}/proposals`).catch(() => ({ proposals: [] })),
     ])
-      .then(([detail, credits]) => {
+      .then(([detail, credits, props]) => {
         setOrg(detail.organization);
         setBalance(credits.balance);
         setGrants(credits.grants);
+        setPendingProposals(props.proposals.filter((p) => p.status === 'proposee').length);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -55,6 +58,23 @@ export default function Dashboard() {
       <h1 className="text-2xl font-bold text-slate-900">
         Bonjour{firstName ? ` ${firstName}` : ''} 👋
       </h1>
+
+      {/* Propositions d'amélioration en attente de réponse */}
+      {pendingProposals > 0 && (
+        <Link to="/modifications"
+          className="flex items-center gap-3 rounded-2xl border border-violet-200 bg-violet-50 p-5 transition-colors hover:bg-violet-100">
+          <Lightbulb className="h-5 w-5 shrink-0 text-violet-600" />
+          <div className="flex-1">
+            <p className="font-semibold text-violet-900">
+              {pendingProposals > 1
+                ? `${pendingProposals} idées d'amélioration vous attendent`
+                : 'Une idée d\'amélioration vous attend'}
+            </p>
+            <p className="mt-0.5 text-sm text-violet-800">On vous propose des changements pour votre site : acceptez ou refusez en un clic.</p>
+          </div>
+          <ArrowRight className="h-5 w-5 shrink-0 text-violet-600" />
+        </Link>
+      )}
 
       {/* Messages d'état en langage humain */}
       {org.status === 'pending' && (

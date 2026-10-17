@@ -130,6 +130,7 @@ test('invoice.paid : lot forfait créé (2 crédits Start) expirant à la fin de
     [[{ ...ORG }]],           // findOrgByCustomer
     [{ affectedRows: 1 }],    // createGrant
     [{ affectedRows: 0 }],    // processDeferredTickets
+    [[{ n: 0 }]],             // countPending (propositions)
     [{}]                      // audit
   );
   const res = await dispatch(signedReq(invoicePaidEvent()));
@@ -167,6 +168,7 @@ test('invoice.paid : org past_due → repasse active', async () => {
     [{ affectedRows: 1 }],
     [{}],                     // setOrgStatus(active)
     [{ affectedRows: 0 }],
+    [[{ n: 0 }]],             // countPending (propositions)
     [{}]
   );
   const res = await dispatch(signedReq(invoicePaidEvent()));
@@ -185,6 +187,7 @@ test('coupon 12e mois : appliqué au 11e paiement Stripe de l\'abonnement', asyn
     [[{ ...ORG, billing_interval: 'annual' }]],
     [{ affectedRows: 1 }],
     [{ affectedRows: 0 }],
+    [[{ n: 0 }]],             // countPending (propositions)
     [{}],                     // audit free-month
     [{}]                      // audit credits.grant
   );
@@ -203,6 +206,7 @@ test('coupon 12e mois : client importé avec plus de 11 paiements → pas de cou
     [[{ ...ORG, billing_interval: 'annual' }]],
     [{ affectedRows: 1 }],
     [{ affectedRows: 0 }],
+    [[{ n: 0 }]],             // countPending (propositions)
     [{}]
   );
   const res = await dispatch(signedReq(invoicePaidEvent()));
@@ -217,6 +221,7 @@ test('coupon 12e mois : abonnement mensuel sans engagement → jamais de coupon'
     [[{ ...ORG }]],
     [{ affectedRows: 1 }],
     [{ affectedRows: 0 }],
+    [[{ n: 0 }]],             // countPending (propositions)
     [{}]
   );
   await dispatch(signedReq(invoicePaidEvent()));
@@ -257,4 +262,41 @@ test('erreur pendant le traitement → 500 pour que Stripe retente', async () =>
   const res = await dispatch(signedReq(invoicePaidEvent()));
   assert.equal(res.statusCode, 500);
   assert.deepEqual(res.body, { error: 'Erreur traitement webhook' });
+});
+
+/* ── Rappel de début de mois (demandes reportées + propositions) ───────── */
+
+test('invoice.paid : propositions sans réponse → UN email de rappel vers /modifications', async () => {
+  pool.queue(
+    [[{ ...ORG }]],
+    [{ affectedRows: 1 }],    // createGrant
+    [{ affectedRows: 0 }],    // processDeferredTickets
+    [[{ n: 2 }]],             // countPending : 2 propositions en attente
+    [[]],                     // emailOrgMembers → memberships (vide)
+    [{}]                      // audit
+  );
+  const res = await dispatch(signedReq(invoicePaidEvent()));
+  assert.deepEqual(res.body, { received: true });
+  assert.match(pool.calls[3].sql, /FROM proposals/);
+  assert.match(pool.calls[4].sql, /FROM memberships/); // l'email est bien parti (1 seule fois)
+  assert.equal(pool.calls.filter((c) => /FROM memberships/.test(c.sql)).length, 1);
+});
+
+const { monthlyReminder } = await import('../routes/stripe-webhook.js');
+
+test('monthlyReminder : rien à signaler → pas d\'email', () => {
+  assert.equal(monthlyReminder(0, 0), null);
+});
+
+test('monthlyReminder : demande reportée ET propositions → un seul message combiné', () => {
+  const r = monthlyReminder(1, 2);
+  assert.equal(r.title, 'Votre espace client vous attend');
+  assert.match(r.message, /2 propositions d'amélioration attendent/);
+  assert.match(r.message, /mise de côté/);
+});
+
+test('monthlyReminder : singulier / pluriel des propositions', () => {
+  assert.equal(monthlyReminder(0, 1).title, 'Une proposition vous attend');
+  assert.match(monthlyReminder(0, 1).message, /une proposition d'amélioration attend/);
+  assert.equal(monthlyReminder(0, 3).title, 'Des propositions vous attendent');
 });
