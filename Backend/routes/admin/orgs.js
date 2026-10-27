@@ -54,7 +54,7 @@ const orgSchema = z.object({
 /* ── POST /api/admin/orgs — créer une organisation ─────────────────────── */
 router.post('/', async (req, res) => {
   const parsed = orgSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Données invalides', details: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ error: 'Données invalides', details: z.flattenError(parsed.error) });
 
   const d = parsed.data;
   const id = randomUUID();
