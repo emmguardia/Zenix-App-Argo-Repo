@@ -80,7 +80,7 @@ const FIELD_LABELS = {
 router.post('/profile', async (req, res) => {
   const parsed = profileSchema.safeParse(req.body);
   if (!parsed.success) {
-    const fields = Object.keys(parsed.error.flatten().fieldErrors)
+    const fields = Object.keys(z.flattenError(parsed.error).fieldErrors)
       .map((f) => FIELD_LABELS[f] ?? f);
     return res.status(400).json({ error: `Vérifiez ${fields.join(', ')}` });
   }
