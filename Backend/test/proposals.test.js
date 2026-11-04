@@ -100,6 +100,7 @@ test('acceptProposal : plus de crédit → 409, la proposition reste ouverte', a
   const r = await acceptProposal('org-1', 'p-1', 'user-1');
   assert.equal(r.status, 409);
   assert.match(r.error, /mois prochain/);
+  assert.equal(r.code, 'NO_CREDIT'); // message adapté côté admin (« accepté par message »)
   assert.ok(!pool.calls.some((c) => /UPDATE proposals|INSERT INTO tickets/.test(c.sql)));
 });
 

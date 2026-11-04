@@ -101,6 +101,7 @@ export async function acceptProposal(orgId, proposalId, userId) {
     return {
       error: 'Vous avez déjà utilisé toutes vos modifications ce mois-ci. La proposition reste disponible : vous pourrez l\'accepter dès le mois prochain.',
       status: 409,
+      code: 'NO_CREDIT',
     };
   }
 

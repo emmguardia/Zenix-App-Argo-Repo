@@ -11,7 +11,7 @@ import { putObject, deleteObject, signedDownloadUrl } from '../../config/r2.js';
 import { emailOrgMembers } from '../../utils/email.js';
 import { getBalance } from '../../utils/credits.js';
 import {
-  proposalLimit, countPending, listProposals, createBatch, withdrawProposal, batchEmailMessage, MAX_PROPOSALS_PER_BATCH,
+  proposalLimit, countPending, listProposals, createBatch, acceptProposal, withdrawProposal, batchEmailMessage, MAX_PROPOSALS_PER_BATCH,
 } from '../../utils/proposals.js';
 
 const router = Router();
@@ -367,6 +367,27 @@ router.post('/:id/proposals', async (req, res) => {
     batch: result.batchId, count: titles.length,
   });
   res.status(201).json({ sent: titles.length, batchId: result.batchId });
+});
+
+/* Le client a dit oui par message (WhatsApp, mail, téléphone) : Enzo accepte
+   à sa place. Même effet qu'une acceptation dans l'espace client — 1 crédit
+   décompté, demande « À faire » — tracé comme décision admin. */
+router.post('/:id/proposals/:proposalId/accept', async (req, res) => {
+  const org = await loadOrg(req.params.id);
+  if (!org) return res.status(404).json({ error: 'Organisation introuvable' });
+
+  const result = await acceptProposal(org.id, req.params.proposalId, req.user.uid);
+  if (result.error) {
+    const error = result.code === 'NO_CREDIT'
+      ? 'Plus de crédit ce mois-ci pour ce client : la proposition reste ouverte'
+      : result.error;
+    return res.status(result.status).json({ error });
+  }
+
+  await audit('admin', req.user.uid, 'proposal.accept-by-message', 'proposal', req.params.proposalId, {
+    org: org.name, ticket: result.ticketId,
+  });
+  res.json({ accepted: true, balance: await getBalance(org.id) });
 });
 
 router.delete('/:id/proposals/:proposalId', async (req, res) => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, BadgeCheck, ChevronDown, ChevronUp, Download, Lightbulb, Pencil, Plus, Rocket, Send, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Check, ChevronDown, ChevronUp, Download, Lightbulb, Pencil, Plus, Rocket, Send, Trash2, Upload, UserPlus, X } from 'lucide-react';
 import { api, type AdminDocument, type AdminOrganization, type AdminProposals, type StripeCustomer } from '../../api';
 import { Badge, Card, ErrorNote, fmtDate, Modal, ORG_STATUS, PLAN_LABELS, Spinner, useToast } from '../../ui';
 
@@ -562,6 +562,19 @@ function ProposalsSection({ org }: { org: AdminOrganization }) {
     } finally { setBusy(false); }
   };
 
+  // Le client a dit oui par message : même effet que s'il avait cliqué lui-même
+  const acceptForClient = async (id: string, title: string) => {
+    if (!window.confirm(`Le client a accepté « ${title} » par message ?\n1 crédit sera décompté et la demande passera en « À faire ».`)) return;
+    setBusy(true);
+    try {
+      await api.post(`/admin/orgs/${org.id}/proposals/${id}/accept`, {});
+      toast('Proposition acceptée — demande à faire');
+      load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erreur', 'error');
+    } finally { setBusy(false); }
+  };
+
   const update = (i: number, key: 'title' | 'description', value: string) =>
     setRows(rows.map((r, j) => (j === i ? { ...r, [key]: value } : r)));
 
@@ -590,10 +603,16 @@ function ProposalsSection({ org }: { org: AdminOrganization }) {
               <div className="flex shrink-0 items-center gap-1">
                 <Badge {...PROPOSAL_STATUS[p.status]} />
                 {p.status === 'proposee' && (
-                  <button title="Retirer (libère une place)" disabled={busy} onClick={() => withdraw(p.id)}
-                    className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-50">
-                    <X className="h-4 w-4" />
-                  </button>
+                  <>
+                    <button title="Le client a accepté par message" disabled={busy} onClick={() => acceptForClient(p.id, p.title)}
+                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50">
+                      <Check className="h-3.5 w-3.5" /> Accepté par message
+                    </button>
+                    <button title="Retirer (libère une place)" disabled={busy} onClick={() => withdraw(p.id)}
+                      className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 disabled:opacity-50">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </>
                 )}
               </div>
             </li>
